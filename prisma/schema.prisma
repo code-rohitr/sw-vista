@@ -16,6 +16,14 @@ model Users {
   password_hash String
   role          String
   created_at    DateTime             @default(now())
+  feedbacks     EventFeedback[]
+  proposals     Proposals[]          @relation("UserProposals")
+  notifications CalendarNotifications[]
+  auditLogs     AuditLogs[]
+  bookings      VenueBookings[]
+  reports       Reports[]            @relation("ReporterReports")
+  approvals     Approvals[]          @relation("ApproverApprovals")
+  clubMembers   ClubMembers[]
 }
 
 model UserRoles {
@@ -31,6 +39,9 @@ model Venues {
   capacity    Int
   description String
   image_url   String?
+  bookings    VenueBookings[]
+  catalogue   VenueCatalogue[]
+  reports     Reports[]
 }
 
 model VenueBookings {
@@ -42,7 +53,11 @@ model VenueBookings {
   event_date       DateTime
   status           String
   created_at       DateTime      @default(now())
-  
+  user             Users         @relation(fields: [user_id], references: [id])
+  venue            Venues        @relation(fields: [venue_id], references: [id])
+  eventHistory     EventHistory[]
+  reports          Reports[]
+  eventFeedback    EventFeedback[]
 }
 
 model EventFeedback {
@@ -52,6 +67,8 @@ model EventFeedback {
   rating     Int
   comments   String
   created_at DateTime      @default(now())
+  event      VenueBookings @relation(fields: [event_id], references: [id])
+  user       Users         @relation(fields: [user_id], references: [id])
 }
 
 model Proposals {
@@ -63,6 +80,7 @@ model Proposals {
   requested_date DateTime
   status         String
   created_at     DateTime @default(now())
+  proposer       Users    @relation("UserProposals", fields: [proposer_id], references: [id])
 }
 
 model Reports {
@@ -73,7 +91,11 @@ model Reports {
   event_id    Int?
   status      String
   created_at  DateTime      @default(now())
-  
+  reporter    Users         @relation("ReporterReports", fields: [reporter_id], references: [id])
+  event       VenueBookings? @relation(fields: [event_id], references: [id])
+  venue       Venues?       @relation(fields: [venue_id], references: [id])
+  venue_id    Int?
+  approvals   Approvals[]
 }
 
 model Approvals {
@@ -84,6 +106,8 @@ model Approvals {
   action      String
   remarks     String?
   created_at  DateTime @default(now())
+  approver    Users    @relation("ApproverApprovals", fields: [approver_id], references: [id])
+  report      Reports? @relation(fields: [entity_id], references: [id])
 }
 
 model CalendarNotifications {
@@ -92,6 +116,7 @@ model CalendarNotifications {
   event_id        Int
   notification_type String
   sent_at         DateTime
+  user            Users    @relation(fields: [user_id], references: [id])
 }
 
 model Clubs {
@@ -109,6 +134,7 @@ model ClubMembers {
   role      String
   joined_at DateTime @default(now())
   club      Clubs    @relation(fields: [club_id], references: [id])
+  user      Users    @relation(fields: [user_id], references: [id])
 }
 
 model VenueCatalogue {
@@ -116,6 +142,7 @@ model VenueCatalogue {
   venue_id         Int
   image_url        String?
   additional_details String?
+  venue            Venues  @relation(fields: [venue_id], references: [id])
 }
 
 model AuditLogs {
@@ -125,6 +152,7 @@ model AuditLogs {
   entity_id   Int
   action      String
   timestamp   DateTime @default(now())
+  user        Users    @relation(fields: [user_id], references: [id])
 }
 
 model EventHistory {
@@ -133,4 +161,5 @@ model EventHistory {
   event_status     String
   feedback         String?
   created_at       DateTime      @default(now())
+  venueBooking     VenueBookings @relation(fields: [venue_booking_id], references: [id])
 }
