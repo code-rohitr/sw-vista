@@ -5,20 +5,21 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { Moon, Sun } from 'lucide-react';
 
-export default function AdminLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const router = useRouter();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check if user is logged in and has godmode role
+    // Check if user is logged in
     const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('auth_token');
 
@@ -35,16 +36,6 @@ export default function AdminLayout({
     try {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
-
-      if (parsedUser.role !== 'godmode') {
-        toast({
-          title: 'Access denied',
-          description: 'You do not have permission to access the admin area',
-          variant: 'destructive',
-        });
-        router.push('/dashboard');
-        return;
-      }
     } catch (error) {
       localStorage.removeItem('user');
       localStorage.removeItem('auth_token');
@@ -52,12 +43,31 @@ export default function AdminLayout({
     } finally {
       setIsLoading(false);
     }
+
+    // Check for saved theme preference
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+    } else {
+      // Check system preference
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(isDark ? 'dark' : 'light');
+      document.documentElement.classList.toggle('dark', isDark);
+    }
   }, [router, toast]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('auth_token');
     router.push('/login');
+  };
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    localStorage.setItem('theme', newTheme);
   };
 
   if (isLoading) {
@@ -73,38 +83,30 @@ export default function AdminLayout({
       {/* Sidebar */}
       <div className="w-64 bg-white dark:bg-black shadow-md border-r border-black dark:border-white">
         <div className="p-4 border-b border-black dark:border-white">
-          <h2 className="text-xl font-bold text-black dark:text-white">SW-Vista Admin</h2>
+          <h2 className="text-xl font-bold text-black dark:text-white">SW-Vista</h2>
           <p className="text-sm text-black/70 dark:text-white/70">
-            {user?.username} ({user?.role})
+            {user?.username}
           </p>
         </div>
         <nav className="p-4">
           <ul className="space-y-2">
             <li>
-              <Link href="/admin/dashboard" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
+              <Link href="/dashboard" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
                 Dashboard
               </Link>
             </li>
             <li>
-              <Link href="/admin/users" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
-                User Management
+              <Link href="/dashboard/profile" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
+                Profile
               </Link>
             </li>
-            <li>
-              <Link href="/admin/roles" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
-                Role Management
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin/permissions" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
-                Permissions
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin/audit-logs" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
-                Audit Logs
-              </Link>
-            </li>
+            {user?.role === 'godmode' && (
+              <li>
+                <Link href="/admin" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
+                  Admin Panel
+                </Link>
+              </li>
+            )}
           </ul>
         </nav>
         <div className="p-4 border-t border-black dark:border-white">
@@ -117,10 +119,20 @@ export default function AdminLayout({
       {/* Main content */}
       <div className="flex-1 overflow-auto bg-white dark:bg-black">
         <header className="bg-white dark:bg-black shadow-sm p-4 border-b border-black dark:border-white flex justify-between items-center">
-          <h1 className="text-xl font-bold text-black dark:text-white">Admin Dashboard</h1>
+          <h1 className="text-xl font-bold text-black dark:text-white">Dashboard</h1>
           
           {/* Theme toggle button */}
-          <ThemeToggle />
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-full bg-gray-100 dark:bg-gray-800 text-black dark:text-white transition-transform duration-300 hover:scale-110"
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? (
+              <Moon className="h-5 w-5 transition-all duration-300 rotate-0" />
+            ) : (
+              <Sun className="h-5 w-5 transition-all duration-300 rotate-90" />
+            )}
+          </button>
         </header>
         <main className="p-6">{children}</main>
       </div>

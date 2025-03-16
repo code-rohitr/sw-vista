@@ -53,16 +53,16 @@ export default function AuditLogsPage() {
     switch (action) {
       case 'create_user':
       case 'create_role':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+        return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100';
       case 'update_user':
       case 'update_role':
       case 'add_permission':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100';
       case 'delete_user':
       case 'delete_role':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
+        return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100';
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100';
     }
   };
 
@@ -75,7 +75,7 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-black dark:text-white">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Audit Logs</h2>
         <div className="flex items-center space-x-2">
@@ -100,41 +100,41 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
-      <Card>
+      <Card className="border-black dark:border-white bg-white dark:bg-black">
         <CardHeader>
-          <CardTitle>System Activity</CardTitle>
+          <CardTitle className="text-black dark:text-white">System Activity</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Entity Type</TableHead>
-                <TableHead>Entity ID</TableHead>
-                <TableHead>Timestamp</TableHead>
+              <TableRow className="border-black dark:border-white">
+                <TableHead className="text-black dark:text-white">ID</TableHead>
+                <TableHead className="text-black dark:text-white">User</TableHead>
+                <TableHead className="text-black dark:text-white">Action</TableHead>
+                <TableHead className="text-black dark:text-white">Entity Type</TableHead>
+                <TableHead className="text-black dark:text-white">Entity ID</TableHead>
+                <TableHead className="text-black dark:text-white">Timestamp</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {logs.length > 0 ? (
                 logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>{log.id}</TableCell>
-                    <TableCell>{log.user?.username || log.user_id}</TableCell>
+                  <TableRow key={log.id} className="border-black dark:border-white">
+                    <TableCell className="text-black dark:text-white">{log.id}</TableCell>
+                    <TableCell className="text-black dark:text-white">{log.user?.username || log.user_id}</TableCell>
                     <TableCell>
                       <span className={`px-2 py-1 rounded text-xs ${getActionColor(log.action)}`}>
                         {log.action}
                       </span>
                     </TableCell>
-                    <TableCell>{log.entity_type}</TableCell>
-                    <TableCell>{log.entity_id}</TableCell>
-                    <TableCell>{new Date(log.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-black dark:text-white">{log.entity_type}</TableCell>
+                    <TableCell className="text-black dark:text-white">{log.entity_id}</TableCell>
+                    <TableCell className="text-black dark:text-white">{new Date(log.timestamp).toLocaleString()}</TableCell>
                   </TableRow>
                 ))
               ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-4">
+                <TableRow className="border-black dark:border-white">
+                  <TableCell colSpan={6} className="text-center py-4 text-black dark:text-white">
                     No audit logs found
                   </TableCell>
                 </TableRow>
