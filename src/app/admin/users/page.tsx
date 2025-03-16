@@ -265,7 +265,11 @@ export default function UserManagementPage() {
                   <TableCell>{user.id}</TableCell>
                   <TableCell>{user.username}</TableCell>
                   <TableCell>{user.email}</TableCell>
-                  <TableCell>{user.role}</TableCell>
+                  <TableCell>
+                    {typeof user.role === 'object' 
+                      ? (user.role?.role_name || user.role?.name || 'No role') 
+                      : user.role || 'No role'}
+                  </TableCell>
                   <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <div className="flex space-x-2">

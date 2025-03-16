@@ -9,28 +9,156 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// IAM System Models
+
 model Users {
-  id            Int                  @id @default(autoincrement())
-  username      String               @unique
-  email         String               @unique
+  id            Int                     @id @default(autoincrement())
+  username      String                  @unique
+  email         String                  @unique
   password_hash String
-  role          String
-  created_at    DateTime             @default(now())
+  role_id       Int
+  created_at    DateTime                @default(now())
+  
+  // Relationships
+  role          Roles                   @relation(fields: [role_id], references: [id])
   feedbacks     EventFeedback[]
-  proposals     Proposals[]          @relation("UserProposals")
+  proposals     Proposals[]             @relation("UserProposals")
   notifications CalendarNotifications[]
   auditLogs     AuditLogs[]
   bookings      VenueBookings[]
-  reports       Reports[]            @relation("ReporterReports")
-  approvals     Approvals[]          @relation("ApproverApprovals")
+  reports       Reports[]               @relation("ReporterReports")
+  approvals     Approvals[]             @relation("ApproverApprovals")
+  entityMembers EntityMembers[]
   clubMembers   ClubMembers[]
 }
 
-model UserRoles {
-  id          Int      @id @default(autoincrement())
-  role_name   String   @unique
-  permissions String[] // Array of permissions
+model Roles {
+  id            Int               @id @default(autoincrement())
+  name          String            @unique
+  description   String?
+  is_system_role Boolean          @default(false)
+  created_at    DateTime          @default(now())
+  
+  // Relationships
+  users         Users[]
+  rolePermissions RolePermissions[]
 }
+
+model Permissions {
+  id            Int                    @id @default(autoincrement())
+  name          String                 @unique
+  description   String?
+  action        String                 // view, create, update, delete
+  created_at    DateTime               @default(now())
+  
+  // Relationships
+  rolePermissions      RolePermissions[]
+  entityRolePermissions EntityRolePermissions[]
+}
+
+model Resources {
+  id            Int                    @id @default(autoincrement())
+  name          String                 @unique
+  path          String                 @unique
+  description   String?
+  created_at    DateTime               @default(now())
+  
+  // Relationships
+  rolePermissions      RolePermissions[]
+  entityRolePermissions EntityRolePermissions[]
+}
+
+model RolePermissions {
+  id            Int          @id @default(autoincrement())
+  role_id       Int
+  permission_id Int
+  resource_id   Int
+  created_at    DateTime     @default(now())
+  
+  // Relationships
+  role          Roles        @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    Permissions  @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  resource      Resources    @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  
+  // Unique constraint to prevent duplicates
+  @@unique([role_id, permission_id, resource_id])
+}
+
+model EntityTypes {
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  description   String?
+  created_at    DateTime       @default(now())
+  
+  // Relationships
+  entities      Entities[]
+  entityRoles   EntityRoles[]
+}
+
+model Entities {
+  id              Int             @id @default(autoincrement())
+  entity_type_id  Int
+  name            String
+  description     String?
+  created_at      DateTime        @default(now())
+  
+  // Relationships
+  entityType      EntityTypes     @relation(fields: [entity_type_id], references: [id])
+  entityMembers   EntityMembers[]
+  
+  // Unique constraint for name within an entity type
+  @@unique([entity_type_id, name])
+}
+
+model EntityRoles {
+  id              Int                     @id @default(autoincrement())
+  entity_type_id  Int
+  name            String
+  description     String?
+  created_at      DateTime                @default(now())
+  
+  // Relationships
+  entityType      EntityTypes             @relation(fields: [entity_type_id], references: [id])
+  entityMembers   EntityMembers[]
+  entityRolePermissions EntityRolePermissions[]
+  
+  // Unique constraint for name within an entity type
+  @@unique([entity_type_id, name])
+}
+
+model EntityRolePermissions {
+  id              Int           @id @default(autoincrement())
+  entity_role_id  Int
+  permission_id   Int
+  resource_id     Int
+  created_at      DateTime      @default(now())
+  
+  // Relationships
+  entityRole      EntityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
+  permission      Permissions   @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  resource        Resources     @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  
+  // Unique constraint to prevent duplicates
+  @@unique([entity_role_id, permission_id, resource_id])
+}
+
+model EntityMembers {
+  id              Int           @id @default(autoincrement())
+  entity_id       Int
+  user_id         Int
+  entity_role_id  Int
+  joined_at       DateTime      @default(now())
+  
+  // Relationships
+  entity          Entities      @relation(fields: [entity_id], references: [id], onDelete: Cascade)
+  user            Users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  entityRole      EntityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
+  
+  // Unique constraint to prevent duplicates
+  @@unique([entity_id, user_id])
+}
+
+// Existing Project Models
 
 model Venues {
   id          Int              @id @default(autoincrement())

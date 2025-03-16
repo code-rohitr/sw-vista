@@ -1,52 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
+import { verifyCredentials, generateToken, getRolePermissions } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
     const { username, password } = await request.json();
 
-    // Find user by username
-    const user = await prisma.users.findUnique({
-      where: { username },
-    });
+    // Verify credentials using the auth utility
+    const user = await verifyCredentials(username, password);
 
     if (!user) {
-      // We can't log for non-existent users
+      // We don't know which user failed, so we can't log it specifically
       return NextResponse.json(
         { message: 'Invalid username or password' },
         { status: 401 }
       );
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      // Log failed login attempt
-      await prisma.auditLogs.create({
-        data: {
-          user_id: user.id,
-          entity_type: 'auth',
-          entity_id: user.id,
-          action: 'LOGIN_FAILED',
-        },
-      });
-      
-      return NextResponse.json(
-        { message: 'Invalid username or password' },
-        { status: 401 }
-      );
-    }
+    // Get the user's role permissions
+    const rolePermissions = await getRolePermissions(user.role_id);
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '1d' }
-    );
+    // Generate JWT token with user ID, username, and role ID
+    const token = generateToken({
+      id: user.id,
+      username: user.username,
+      role_id: user.role_id,
+      role_name: user.role.name,
+    });
 
     // Log successful login
     await prisma.auditLogs.create({
@@ -58,14 +38,29 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Return user data and token
+    // Extract basic permissions for the frontend
+    const basicPermissions = rolePermissions.reduce((acc, rp) => {
+      const resourceName = rp.resource.name;
+      const permissionName = rp.permission.name;
+      
+      if (!acc[resourceName]) {
+        acc[resourceName] = [];
+      }
+      
+      acc[resourceName].push(permissionName);
+      return acc;
+    }, {} as Record<string, string[]>);
+
+    // Return user data, token, and basic permissions
     return NextResponse.json({
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role,
+        role: user.role.name,
+        role_id: user.role_id,
       },
+      permissions: basicPermissions,
       token,
     });
   } catch (error) {
@@ -74,7 +69,5 @@ export async function POST(request: NextRequest) {
       { message: 'An error occurred during login' },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

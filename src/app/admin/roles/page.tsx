@@ -4,15 +4,17 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<any[]>([]);
-  const [allPermissions, setAllPermissions] = useState<string[]>([]);
+  const [permissions, setPermissions] = useState<any[]>([]);
+  const [resources, setResources] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -20,11 +22,14 @@ export default function RoleManagementPage() {
   
   // Form state
   const [roleName, setRoleName] = useState('');
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [roleDescription, setRoleDescription] = useState('');
+  const [isSystemRole, setIsSystemRole] = useState(false);
+  const [selectedPermissionId, setSelectedPermissionId] = useState<number | null>(null);
+  const [selectedResourceId, setSelectedResourceId] = useState<number | null>(null);
   
   const { toast } = useToast();
 
-  // Fetch roles and permissions on component mount
+  // Fetch roles, permissions, and resources on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -40,7 +45,32 @@ export default function RoleManagementPage() {
         
         if (!rolesResponse.ok) throw new Error('Failed to fetch roles');
         const rolesData = await rolesResponse.json();
-        setRoles(rolesData);
+        
+        // Fetch role permissions for each role
+        const rolesWithPermissions = await Promise.all(
+          rolesData.map(async (role: any) => {
+            const permissionsResponse = await fetch(`/api/roles/${role.id}/permissions`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (permissionsResponse.ok) {
+              const permissionsData = await permissionsResponse.json();
+              return {
+                ...role,
+                rolePermissions: permissionsData
+              };
+            }
+            
+            return {
+              ...role,
+              rolePermissions: []
+            };
+          })
+        );
+        
+        setRoles(rolesWithPermissions);
 
         // Fetch all permissions
         const permissionsResponse = await fetch('/api/permissions', {
@@ -51,7 +81,18 @@ export default function RoleManagementPage() {
         
         if (!permissionsResponse.ok) throw new Error('Failed to fetch permissions');
         const permissionsData = await permissionsResponse.json();
-        setAllPermissions(permissionsData);
+        setPermissions(permissionsData);
+
+        // Fetch all resources
+        const resourcesResponse = await fetch('/api/resources', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!resourcesResponse.ok) throw new Error('Failed to fetch resources');
+        const resourcesData = await resourcesResponse.json();
+        setResources(resourcesData);
       } catch (error) {
         toast({
           title: 'Error',
@@ -68,7 +109,10 @@ export default function RoleManagementPage() {
 
   const resetForm = () => {
     setRoleName('');
-    setSelectedPermissions([]);
+    setRoleDescription('');
+    setIsSystemRole(false);
+    setSelectedPermissionId(null);
+    setSelectedResourceId(null);
     setSelectedRole(null);
     setIsEditMode(false);
   };
@@ -78,8 +122,9 @@ export default function RoleManagementPage() {
     
     if (role) {
       setSelectedRole(role);
-      setRoleName(role.role_name);
-      setSelectedPermissions([...role.permissions]);
+      setRoleName(role.name);
+      setRoleDescription(role.description || '');
+      setIsSystemRole(role.is_system_role);
       setIsEditMode(true);
     }
     
@@ -104,8 +149,9 @@ export default function RoleManagementPage() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          role_name: roleName,
-          permissions: selectedPermissions
+          name: roleName,
+          description: roleDescription,
+          is_system_role: isSystemRole
         })
       });
 
@@ -116,7 +162,7 @@ export default function RoleManagementPage() {
       }
 
       // Update roles list
-      setRoles([...roles, data]);
+      setRoles([...roles, {...data, rolePermissions: []}]);
       
       toast({
         title: 'Success',
@@ -148,8 +194,9 @@ export default function RoleManagementPage() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          role_name: roleName,
-          permissions: selectedPermissions
+          name: roleName,
+          description: roleDescription,
+          is_system_role: isSystemRole
         })
       });
 
@@ -160,7 +207,11 @@ export default function RoleManagementPage() {
       }
 
       // Update roles list
-      setRoles(roles.map(role => role.id === selectedRole.id ? data : role));
+      setRoles(roles.map(role => 
+        role.id === selectedRole.id 
+          ? {...data, rolePermissions: role.rolePermissions} 
+          : role
+      ));
       
       toast({
         title: 'Success',
@@ -217,14 +268,113 @@ export default function RoleManagementPage() {
     }
   };
 
-  const handlePermissionChange = (permission: string) => {
-    setSelectedPermissions(current => {
-      if (current.includes(permission)) {
-        return current.filter(p => p !== permission);
-      } else {
-        return [...current, permission];
+  const handleAddPermission = async (roleId: number) => {
+    if (!selectedPermissionId || !selectedResourceId) {
+      toast({
+        title: 'Error',
+        description: 'Please select both a permission and a resource',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`/api/roles/${roleId}/permissions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          permission_id: selectedPermissionId,
+          resource_id: selectedResourceId
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to add permission');
       }
-    });
+
+      // Update roles list
+      setRoles(roles.map(role => {
+        if (role.id === roleId) {
+          return {
+            ...role,
+            rolePermissions: [...role.rolePermissions, data]
+          };
+        }
+        return role;
+      }));
+      
+      toast({
+        title: 'Success',
+        description: 'Permission added successfully',
+      });
+      
+      // Reset selection
+      setSelectedPermissionId(null);
+      setSelectedResourceId(null);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'An error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRemovePermission = async (roleId: number, permissionId: number, resourceId: number) => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`/api/roles/${roleId}/permissions?permissionId=${permissionId}&resourceId=${resourceId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to remove permission');
+      }
+
+      // Update roles list
+      setRoles(roles.map(role => {
+        if (role.id === roleId) {
+          return {
+            ...role,
+            rolePermissions: role.rolePermissions.filter((rp: any) => 
+              !(rp.permission_id === permissionId && rp.resource_id === resourceId)
+            )
+          };
+        }
+        return role;
+      }));
+      
+      toast({
+        title: 'Success',
+        description: 'Permission removed successfully',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'An error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (isLoading && roles.length === 0) {
@@ -251,8 +401,9 @@ export default function RoleManagementPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
-                <TableHead>Role Name</TableHead>
-                <TableHead>Permissions</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>System Role</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -260,19 +411,9 @@ export default function RoleManagementPage() {
               {roles.map((role) => (
                 <TableRow key={role.id}>
                   <TableCell>{role.id}</TableCell>
-                  <TableCell>{role.role_name}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {role.permissions.map((permission: string) => (
-                        <span 
-                          key={permission} 
-                          className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs"
-                        >
-                          {permission}
-                        </span>
-                      ))}
-                    </div>
-                  </TableCell>
+                  <TableCell>{role.name}</TableCell>
+                  <TableCell>{role.description || '-'}</TableCell>
+                  <TableCell>{role.is_system_role ? 'Yes' : 'No'}</TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button variant="outline" size="sm" onClick={() => handleOpenDialog(role)}>
@@ -282,7 +423,7 @@ export default function RoleManagementPage() {
                         variant="destructive" 
                         size="sm" 
                         onClick={() => handleDeleteRole(role.id)}
-                        disabled={role.role_name === 'godmode'} // Prevent deleting godmode role
+                        disabled={role.name === 'godmode'} // Prevent deleting godmode role
                       >
                         Delete
                       </Button>
@@ -295,13 +436,102 @@ export default function RoleManagementPage() {
         </CardContent>
       </Card>
 
+      {roles.map((role) => (
+        <Card key={`permissions-${role.id}`}>
+          <CardHeader>
+            <CardTitle>Permissions for {role.name}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="space-y-2">
+                  <Label htmlFor={`permission-${role.id}`}>Permission</Label>
+                  <Select 
+                    value={selectedPermissionId?.toString() || ''} 
+                    onValueChange={(value) => setSelectedPermissionId(parseInt(value))}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select permission" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {permissions.map((permission) => (
+                        <SelectItem key={permission.id} value={permission.id.toString()}>
+                          {permission.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`resource-${role.id}`}>Resource</Label>
+                  <Select 
+                    value={selectedResourceId?.toString() || ''} 
+                    onValueChange={(value) => setSelectedResourceId(parseInt(value))}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select resource" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {resources.map((resource) => (
+                        <SelectItem key={resource.id} value={resource.id.toString()}>
+                          {resource.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={() => handleAddPermission(role.id)}>
+                  Add Permission
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Permission</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Resource</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {role.rolePermissions && role.rolePermissions.length > 0 ? (
+                    role.rolePermissions.map((rp: any) => (
+                      <TableRow key={rp.id}>
+                        <TableCell>{rp.permission?.name || '-'}</TableCell>
+                        <TableCell>{rp.permission?.action || '-'}</TableCell>
+                        <TableCell>{rp.resource?.name || '-'}</TableCell>
+                        <TableCell>
+                          <Button 
+                            variant="destructive" 
+                            size="sm" 
+                            onClick={() => handleRemovePermission(role.id, rp.permission_id, rp.resource_id)}
+                            disabled={role.name === 'godmode' && rp.permission?.name === 'manage'} // Prevent removing 'manage' from godmode
+                          >
+                            Remove
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center">No permissions assigned</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{isEditMode ? 'Edit Role' : 'Create New Role'}</DialogTitle>
             <DialogDescription>
               {isEditMode
-                ? 'Update role information and permissions.'
+                ? 'Update role information.'
                 : 'Fill in the details to create a new role.'}
             </DialogDescription>
           </DialogHeader>
@@ -317,35 +547,37 @@ export default function RoleManagementPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Permissions</Label>
-              <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-2 border rounded">
-                {allPermissions.map((permission) => (
-                  <div key={permission} className="flex items-center space-x-2">
-                    <Checkbox 
-                        id={`permission-${permission}`}
-                        checked={selectedPermissions.includes(permission)}
-                        onCheckedChange={() => handlePermissionChange(permission)}
-                        disabled={isEditMode && roleName === 'godmode' && permission === 'all'} // Prevent removing 'all' from godmode
-                      />
-                      <Label htmlFor={`permission-${permission}`}>{permission}</Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <Label htmlFor="roleDescription">Description</Label>
+              <Input
+                id="roleDescription"
+                value={roleDescription}
+                onChange={(e) => setRoleDescription(e.target.value)}
+                placeholder="Enter role description"
+              />
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleCloseDialog}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={isEditMode ? handleUpdateRole : handleCreateRole}
-                disabled={!roleName || selectedPermissions.length === 0}
-              >
-                {isEditMode ? 'Update Role' : 'Create Role'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="isSystemRole" 
+                checked={isSystemRole} 
+                onCheckedChange={(checked) => setIsSystemRole(checked === true)}
+                disabled={isEditMode && roleName === 'godmode'} // Prevent changing godmode system role status
+              />
+              <Label htmlFor="isSystemRole">System Role</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseDialog}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={isEditMode ? handleUpdateRole : handleCreateRole}
+              disabled={!roleName}
+            >
+              {isEditMode ? 'Update Role' : 'Create Role'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }

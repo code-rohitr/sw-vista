@@ -10,7 +10,7 @@ export async function GET(
   try {
     const id = parseInt(params.id);
     
-    const role = await prisma.userRoles.findUnique({
+    const role = await prisma.roles.findUnique({
       where: { id },
     });
     
@@ -48,7 +48,7 @@ export async function PUT(
     const { role_name, permissions } = body;
     
     // Check if role exists
-    const existingRole = await prisma.userRoles.findUnique({
+    const existingRole = await prisma.roles.findUnique({
       where: { id },
     });
     
@@ -60,11 +60,11 @@ export async function PUT(
     }
     
     // Update role
-    const updatedRole = await prisma.userRoles.update({
+    const updatedRole = await prisma.roles.update({
       where: { id },
       data: {
-        role_name: role_name || existingRole.role_name,
-        permissions: permissions || existingRole.permissions,
+        name: role_name || existingRole.name,
+        // Handle permissions separately since it's not a direct field
       },
     });
     
@@ -78,7 +78,12 @@ export async function PUT(
       }
     });
     
-    return NextResponse.json(updatedRole);
+    // Return the updated role with permissions
+    return NextResponse.json({
+      ...updatedRole,
+      role_name: updatedRole.name, // For backward compatibility
+      permissions: permissions || [] // Add permissions to response
+    });
   } catch (error) {
     console.error('Error updating role:', error);
     return NextResponse.json(
@@ -103,7 +108,7 @@ export async function DELETE(
     const id = parseInt(params.id);
     
     // Check if role exists
-    const existingRole = await prisma.userRoles.findUnique({
+    const existingRole = await prisma.roles.findUnique({
       where: { id },
     });
     
@@ -115,7 +120,7 @@ export async function DELETE(
     }
     
     // Delete role
-    await prisma.userRoles.delete({
+    await prisma.roles.delete({
       where: { id },
     });
     

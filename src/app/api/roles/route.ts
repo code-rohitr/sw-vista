@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole } from '@/middleware/roleCheck';
+import { requirePermission } from '@/middleware/roleCheck';
 
 // Get all roles
 export async function GET(request: NextRequest) {
   try {
-    const roles = await prisma.userRoles.findMany();
+    // Check if user has permission to view roles
+    const authResult = await requirePermission('view', '/api/roles')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
+    }
+
+    const roles = await prisma.roles.findMany({
+      orderBy: {
+        name: 'asc',
+      },
+    });
     return NextResponse.json(roles);
   } catch (error) {
     console.error('Error fetching roles:', error);
@@ -19,26 +29,26 @@ export async function GET(request: NextRequest) {
 // Create a new role
 export async function POST(request: NextRequest) {
   try {
-    // Check if user has godmode role
-    const authResult = await requireRole('godmode')(request);
+    // Check if user has permission to create roles
+    const authResult = await requirePermission('create', '/api/roles')(request);
     if ('isAuthorized' in authResult === false) {
-        return authResult;
-      }
+      return authResult;
+    }
 
     const body = await request.json();
-    const { role_name, permissions } = body;
+    const { name, description, is_system_role = false } = body;
     
     // Validate required fields
-    if (!role_name || !permissions || !Array.isArray(permissions)) {
+    if (!name) {
       return NextResponse.json(
-        { message: 'Missing or invalid required fields' },
+        { message: 'Role name is required' },
         { status: 400 }
       );
     }
     
     // Check if role already exists
-    const existingRole = await prisma.userRoles.findUnique({
-      where: { role_name },
+    const existingRole = await prisma.roles.findUnique({
+      where: { name },
     });
     
     if (existingRole) {
@@ -49,10 +59,11 @@ export async function POST(request: NextRequest) {
     }
     
     // Create role
-    const newRole = await prisma.userRoles.create({
+    const newRole = await prisma.roles.create({
       data: {
-        role_name,
-        permissions,
+        name,
+        description,
+        is_system_role,
       },
     });
     
