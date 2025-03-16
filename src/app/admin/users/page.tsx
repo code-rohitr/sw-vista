@@ -22,17 +22,21 @@ export default function UserManagementPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('');
+  // Change the state variable declaration
+  const [role_id, setRoleId] = useState('');
+  // instead of:
+  // const [role, setRole] = useState('');
   
   const { toast } = useToast();
 
-  // Fetch users and roles on component mount
+  // Fetch roles and users on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setIsLoading(true);
         const token = localStorage.getItem('auth_token');
         if (!token) throw new Error('Not authenticated');
-
+  
         // Fetch users
         const usersResponse = await fetch('/api/users', {
           headers: {
@@ -43,7 +47,7 @@ export default function UserManagementPage() {
         if (!usersResponse.ok) throw new Error('Failed to fetch users');
         const usersData = await usersResponse.json();
         setUsers(usersData);
-
+  
         // Fetch roles
         const rolesResponse = await fetch('/api/roles', {
           headers: {
@@ -53,6 +57,7 @@ export default function UserManagementPage() {
         
         if (!rolesResponse.ok) throw new Error('Failed to fetch roles');
         const rolesData = await rolesResponse.json();
+        console.log('Fetched roles:', rolesData); // Debug log
         setRoles(rolesData);
       } catch (error) {
         toast({
@@ -64,19 +69,26 @@ export default function UserManagementPage() {
         setIsLoading(false);
       }
     };
-
+  
     fetchData();
   }, [toast]);
 
+  // In resetForm function
   const resetForm = () => {
     setUsername('');
     setEmail('');
     setPassword('');
-    setRole('');
+    setRoleId('');
     setSelectedUser(null);
     setIsEditMode(false);
   };
-
+  
+  const handleCloseDialog = () => {
+    setIsDialogOpen(false);
+    resetForm();
+  };
+  
+  // In handleOpenDialog function
   const handleOpenDialog = (user?: any) => {
     resetForm();
     
@@ -84,18 +96,14 @@ export default function UserManagementPage() {
       setSelectedUser(user);
       setUsername(user.username);
       setEmail(user.email);
-      setRole(user.role);
+      setRoleId(user.role?.id?.toString() || '');
       setIsEditMode(true);
     }
     
     setIsDialogOpen(true);
   };
-
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
-    resetForm();
-  };
-
+  
+  // In handleCreateUser function
   const handleCreateUser = async () => {
     try {
       setIsLoading(true);
@@ -112,7 +120,7 @@ export default function UserManagementPage() {
           username,
           email,
           password,
-          role
+          role_id: parseInt(role_id) // Convert string to integer
         })
       });
 
@@ -153,7 +161,7 @@ export default function UserManagementPage() {
       if (username) updateData.username = username;
       if (email) updateData.email = email;
       if (password) updateData.password = password;
-      if (role) updateData.role = role;
+      if (role_id) updateData.role_id = parseInt(role_id); // Convert string to integer
 
       const response = await fetch(`/api/users/${selectedUser.id}`, {
         method: 'PUT',
@@ -333,17 +341,22 @@ export default function UserManagementPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">Role</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role.id} value={role.role_name}>
-                      {role.role_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+              // The Select component can remain as is:
+              <Select value={role_id} onValueChange={setRoleId}>
+              <SelectTrigger>
+              <SelectValue placeholder="Select a role" />
+              </SelectTrigger>
+              <SelectContent>
+              {roles && roles.length > 0 ? (
+              roles.map((role) => (
+              <SelectItem key={role.id} value={role.id.toString()}>
+              {role.name || role.role_name}
+              </SelectItem>
+              ))
+              ) : (
+              <SelectItem value="no-roles" disabled>No roles available</SelectItem>
+              )}
+              </SelectContent>
               </Select>
             </div>
           </div>
