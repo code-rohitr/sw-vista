@@ -13,7 +13,8 @@ export async function GET(request: NextRequest) {
     }
     
     const decoded = await verifyToken(token);
-    if (!decoded || decoded.role !== 'godmode') {
+    console.log(decoded)
+    if (!decoded || decoded.role_name !== 'godmode') {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
 
