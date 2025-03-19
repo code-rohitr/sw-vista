@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { NextRequest } from 'next/server';
 import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
 
@@ -319,4 +320,35 @@ export async function getAllUserPermissions(userId: number) {
     rolePermissions,
     entityPermissions,
   };
+}
+
+// Verify authentication from request
+export async function verifyAuth(request: NextRequest) {
+  try {
+    // Get token from Authorization header
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return null;
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return null;
+    }
+
+    // Verify token
+    const secret = process.env.JWT_SECRET || 'your-secret-key';
+    const decoded = jwt.verify(token, secret) as { id: number };
+
+    // Get user from database
+    const user = await prisma.users.findUnique({
+      where: { id: decoded.id },
+      include: { role: true }
+    });
+
+    return user;
+  } catch (error) {
+    console.error('Auth verification error:', error);
+    return null;
+  }
 }

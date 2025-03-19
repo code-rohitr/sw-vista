@@ -1,68 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requirePermission } from '@/middleware/roleCheck';
+import { verifyAuth } from '@/lib/auth';
 
-/**
- * GET /api/entity-types
- * Get all entity types
- */
+// GET /api/entity-types - Get all entity types
 export async function GET(request: NextRequest) {
   try {
-    // Check if user has permission to view entity types
-    const authResult = await requirePermission('view', '/api/entity-types')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
     // Get all entity types
     const entityTypes = await prisma.entityTypes.findMany({
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: { created_at: 'desc' }
     });
 
     return NextResponse.json(entityTypes);
   } catch (error) {
     console.error('Error fetching entity types:', error);
     return NextResponse.json(
-      { message: 'Error fetching entity types' },
+      { message: 'Failed to fetch entity types' },
       { status: 500 }
     );
   }
 }
 
-/**
- * POST /api/entity-types
- * Create a new entity type
- */
+// POST /api/entity-types - Create a new entity type
 export async function POST(request: NextRequest) {
   try {
-    // Check if user has permission to create entity types
-    const authResult = await requirePermission('create', '/api/entity-types')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get request body
-    const body = await request.json();
-    const { name, description } = body;
-
-    // Validate required fields
-    if (!name) {
+    // Check if user has godmode role
+    if (user.role?.name !== 'godmode') {
       return NextResponse.json(
-        { message: 'Name is required' },
-        { status: 400 }
+        { message: 'Only godmode users can create entity types' },
+        { status: 403 }
       );
     }
 
-    // Check if entity type already exists
-    const existingEntityType = await prisma.entityTypes.findUnique({
-      where: { name },
-    });
+    // Get request body
+    const { name, description } = await request.json();
 
-    if (existingEntityType) {
+    // Validate input
+    if (!name) {
       return NextResponse.json(
-        { message: 'Entity type with this name already exists' },
+        { message: 'Entity type name is required' },
         { status: 400 }
       );
     }
@@ -71,25 +58,15 @@ export async function POST(request: NextRequest) {
     const entityType = await prisma.entityTypes.create({
       data: {
         name,
-        description,
-      },
-    });
-
-    // Log action
-    await prisma.auditLogs.create({
-      data: {
-        user_id: authResult.user.id,
-        entity_type: 'entity_type',
-        entity_id: entityType.id,
-        action: 'create_entity_type',
-      },
+        description
+      }
     });
 
     return NextResponse.json(entityType, { status: 201 });
   } catch (error) {
     console.error('Error creating entity type:', error);
     return NextResponse.json(
-      { message: 'Error creating entity type' },
+      { message: 'Failed to create entity type' },
       { status: 500 }
     );
   }

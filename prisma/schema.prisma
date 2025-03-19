@@ -84,46 +84,63 @@ model RolePermissions {
   @@unique([role_id, permission_id, resource_id])
 }
 
+// Entity Types
 model EntityTypes {
-  id            Int            @id @default(autoincrement())
-  name          String         @unique
-  description   String?
-  created_at    DateTime       @default(now())
+  id          Int           @id @default(autoincrement())
+  name        String        @unique
+  description String?
+  created_at  DateTime      @default(now())
   
-  // Relationships
-  entities      Entities[]
-  entityRoles   EntityRoles[]
+  // Relations
+  entities    Entities[]
+  entityRoles EntityRoles[]
 }
 
-model Entities {
-  id              Int             @id @default(autoincrement())
-  entity_type_id  Int
-  name            String
-  description     String?
-  created_at      DateTime        @default(now())
-  
-  // Relationships
-  entityType      EntityTypes     @relation(fields: [entity_type_id], references: [id])
-  entityMembers   EntityMembers[]
-  
-  // Unique constraint for name within an entity type
-  @@unique([entity_type_id, name])
-}
-
+// Entity Roles
 model EntityRoles {
-  id              Int                     @id @default(autoincrement())
-  entity_type_id  Int
-  name            String
-  description     String?
-  created_at      DateTime                @default(now())
+  id                   Int                    @id @default(autoincrement())
+  name                 String
+  description          String?
+  created_at           DateTime               @default(now())
+  entity_type_id       Int
   
-  // Relationships
-  entityType      EntityTypes             @relation(fields: [entity_type_id], references: [id])
-  entityMembers   EntityMembers[]
-  entityRolePermissions EntityRolePermissions[]
+  // Relations
+  entityType           EntityTypes            @relation(fields: [entity_type_id], references: [id])
+  entityMembers        EntityMembers[]
+  entityRolePermissions EntityRolePermissions[] // Add this relation
   
-  // Unique constraint for name within an entity type
-  @@unique([entity_type_id, name])
+  // Composite unique constraint
+  @@unique([name, entity_type_id])
+}
+
+// Entities
+model Entities {
+  id             Int            @id @default(autoincrement())
+  name           String
+  description    String?
+  created_at     DateTime       @default(now())
+  entity_type_id Int
+  
+  // Relations
+  entityType     EntityTypes    @relation(fields: [entity_type_id], references: [id])
+  entityMembers  EntityMembers[]
+}
+
+// Entity Members
+model EntityMembers {
+  id             Int         @id @default(autoincrement())
+  entity_id      Int
+  user_id        Int
+  entity_role_id Int
+  created_at     DateTime    @default(now())
+  
+  // Relations
+  entity         Entities    @relation(fields: [entity_id], references: [id])
+  user           Users       @relation(fields: [user_id], references: [id])
+  entityRole     EntityRoles @relation(fields: [entity_role_id], references: [id])
+  
+  // Composite unique constraint
+  @@unique([entity_id, user_id])
 }
 
 model EntityRolePermissions {
@@ -142,21 +159,22 @@ model EntityRolePermissions {
   @@unique([entity_role_id, permission_id, resource_id])
 }
 
-model EntityMembers {
-  id              Int           @id @default(autoincrement())
-  entity_id       Int
-  user_id         Int
-  entity_role_id  Int
-  joined_at       DateTime      @default(now())
-  
-  // Relationships
-  entity          Entities      @relation(fields: [entity_id], references: [id], onDelete: Cascade)
-  user            Users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  entityRole      EntityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
-  
-  // Unique constraint to prevent duplicates
-  @@unique([entity_id, user_id])
-}
+// Remove this duplicate EntityMembers model
+// model EntityMembers {
+//   id              Int           @id @default(autoincrement())
+//   entity_id       Int
+//   user_id         Int
+//   entity_role_id  Int
+//   joined_at       DateTime      @default(now())
+//   
+//   // Relationships
+//   entity          Entities      @relation(fields: [entity_id], references: [id], onDelete: Cascade)
+//   user            Users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+//   entityRole      EntityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
+//   
+//   // Unique constraint to prevent duplicates
+//   @@unique([entity_id, user_id])
+// }
 
 // Existing Project Models
 

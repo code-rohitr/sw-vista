@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requirePermission, requireEntityMembership } from '@/middleware/roleCheck';
+import { verifyAuth } from '@/lib/auth';
 
-/**
- * GET /api/entity-members
- * Get all entity members or filter by entity ID
- */
+// GET /api/entity-members - Get all entity members
 export async function GET(request: NextRequest) {
   try {
-    // Check if user has permission to view entity members
-    const authResult = await requirePermission('view', '/api/entity-members')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
     // Get query parameters
@@ -24,19 +21,19 @@ export async function GET(request: NextRequest) {
       include: {
         entity: {
           include: {
-            entityType: true,
-          },
+            entityType: true
+          }
         },
         user: {
           select: {
             id: true,
             username: true,
             email: true,
-            role: true,
-          },
+            role: true
+          }
         },
-        entityRole: true,
-      },
+        entityRole: true
+      }
     };
 
     // Add filters if provided
@@ -59,23 +56,25 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching entity members:', error);
     return NextResponse.json(
-      { message: 'Error fetching entity members' },
+      { message: 'Failed to fetch entity members' },
       { status: 500 }
     );
   }
 }
 
-/**
- * POST /api/entity-members
- * Add a user to an entity with a specific role
- */
+// POST /api/entity-members - Add a user to an entity with a specific role
 export async function POST(request: NextRequest) {
   try {
-    // Get request body
-    const body = await request.json();
-    const { entity_id, user_id, entity_role_id } = body;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
 
-    // Validate required fields
+    // Get request body first, before using its values
+    const { entity_id, user_id, entity_role_id } = await request.json();
+
+    // Validate input
     if (!entity_id || !user_id || !entity_role_id) {
       return NextResponse.json(
         { message: 'Entity ID, user ID, and entity role ID are required' },
@@ -83,9 +82,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if user has godmode role or is an admin of the entity
+    if (user.role?.name !== 'godmode') {
+      // Check if user is an admin of the entity
+      const isEntityAdmin = await prisma.entityMembers.findFirst({
+        where: {
+          entity_id,
+          user_id: user.id,
+          entityRole: {
+            name: 'Admin' // Assuming 'Admin' is the role name for entity administrators
+          }
+        }
+      });
+      
+      if (!isEntityAdmin) {
+        return NextResponse.json(
+          { message: 'Only godmode users or entity admins can manage entity members' },
+          { status: 403 }
+        );
+      }
+    }
+
     // Check if entity exists
     const entity = await prisma.entities.findUnique({
-      where: { id: entity_id },
+      where: { id: entity_id }
     });
 
     if (!entity) {
@@ -95,38 +115,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check permissions - either global permission or entity-specific permission
-    let authResult;
-    let entityMembershipResult;
-    let hasPermission = false;
-    
-    // First try with global permission
-    authResult = await requirePermission('manage', '/api/entities', 'entityId')(request);
-    
-    if ('isAuthorized' in authResult) {
-      // User has global permission
-      hasPermission = true;
-    } else {
-      // Try with entity membership check
-      entityMembershipResult = await requireEntityMembership('entityId', 'admin')(request);
-      
-      if ('isAuthorized' in entityMembershipResult) {
-        // User has entity-specific permission
-        hasPermission = true;
-      } else {
-        // User doesn't have any permission
-        return entityMembershipResult;
-      }
-    }
-    
-    // At this point, either authResult or entityMembershipResult is valid
-
     // Check if user exists
-    const user = await prisma.users.findUnique({
-      where: { id: user_id },
+    const targetUser = await prisma.users.findUnique({
+      where: { id: user_id }
     });
 
-    if (!user) {
+    if (!targetUser) {
       return NextResponse.json(
         { message: 'User not found' },
         { status: 404 }
@@ -135,10 +129,7 @@ export async function POST(request: NextRequest) {
 
     // Check if entity role exists and belongs to the entity's type
     const entityRole = await prisma.entityRoles.findUnique({
-      where: { id: entity_role_id },
-      include: {
-        entityType: true,
-      },
+      where: { id: entity_role_id }
     });
 
     if (!entityRole) {
@@ -148,7 +139,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if entity role belongs to the entity's type
     if (entityRole.entity_type_id !== entity.entity_type_id) {
       return NextResponse.json(
         { message: 'Entity role does not belong to the entity type' },
@@ -161,31 +151,26 @@ export async function POST(request: NextRequest) {
       where: {
         entity_id_user_id: {
           entity_id,
-          user_id,
-        },
-      },
+          user_id
+        }
+      }
     });
 
     if (existingMembership) {
       // Update the existing membership with the new role
       const updatedMembership = await prisma.entityMembers.update({
         where: {
-          id: existingMembership.id,
+          id: existingMembership.id
         },
         data: {
-          entity_role_id,
-        },
+          entity_role_id
+        }
       });
-
-      // Get the user who made the request
-      const requestUser = 'user' in authResult ? authResult.user : 
-                         (entityMembershipResult && 'user' in entityMembershipResult) ? entityMembershipResult.user : 
-                         { id: 0 }; // Fallback, should never happen
 
       // Log action
       await prisma.auditLogs.create({
         data: {
-          user_id: requestUser.id,
+          user_id: user.id, // Use the authenticated user's ID
           entity_type: 'entity_member',
           entity_id: updatedMembership.id,
           action: 'update_entity_member',
@@ -204,15 +189,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Get the user who made the request
-    const requestUser = 'user' in authResult ? authResult.user : 
-                       (entityMembershipResult && 'user' in entityMembershipResult) ? entityMembershipResult.user : 
-                       { id: 0 }; // Fallback, should never happen
-
     // Log action
     await prisma.auditLogs.create({
       data: {
-        user_id: requestUser.id,
+        user_id: user.id, // Use the authenticated user's ID
         entity_type: 'entity_member',
         entity_id: entityMember.id,
         action: 'create_entity_member',
@@ -224,6 +204,96 @@ export async function POST(request: NextRequest) {
     console.error('Error creating entity member:', error);
     return NextResponse.json(
       { message: 'Error creating entity member' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/entity-members - Remove a user from an entity
+export async function DELETE(request: NextRequest) {
+  try {
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get query parameters
+    const url = new URL(request.url);
+    const entityId = url.searchParams.get('entityId');
+    const userId = url.searchParams.get('userId');
+
+    // Validate input
+    if (!entityId || !userId) {
+      return NextResponse.json(
+        { message: 'Entity ID and user ID are required' },
+        { status: 400 }
+      );
+    }
+
+    const entity_id = parseInt(entityId);
+    const user_id = parseInt(userId);
+
+    // Check if user has godmode role or is an admin of the entity
+    if (user.role?.name !== 'godmode') {
+      // Check if user is an admin of the entity
+      const isEntityAdmin = await prisma.entityMembers.findFirst({
+        where: {
+          entity_id,
+          user_id: user.id,
+          entityRole: {
+            name: 'Admin' // Assuming 'Admin' is the role name for entity administrators
+          }
+        }
+      });
+      
+      if (!isEntityAdmin) {
+        return NextResponse.json(
+          { message: 'Only godmode users or entity admins can remove entity members' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Check if membership exists
+    const membership = await prisma.entityMembers.findUnique({
+      where: {
+        entity_id_user_id: {
+          entity_id,
+          user_id
+        }
+      }
+    });
+
+    if (!membership) {
+      return NextResponse.json(
+        { message: 'User is not a member of this entity' },
+        { status: 404 }
+      );
+    }
+
+    // Delete membership
+    await prisma.entityMembers.delete({
+      where: {
+        id: membership.id
+      }
+    });
+
+    // Log action
+    await prisma.auditLogs.create({
+      data: {
+        user_id: user.id,
+        entity_type: 'entity_member',
+        entity_id: membership.id,
+        action: 'delete_entity_member',
+      },
+    });
+
+    return NextResponse.json({ message: 'User removed from entity successfully' });
+  } catch (error) {
+    console.error('Error removing entity member:', error);
+    return NextResponse.json(
+      { message: 'Error removing entity member' },
       { status: 500 }
     );
   }
