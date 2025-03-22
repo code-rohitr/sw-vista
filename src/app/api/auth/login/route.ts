@@ -17,9 +17,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if role_id exists before getting permissions
+    if (!user.role_id) {
+      return NextResponse.json(
+        { message: 'User has no assigned role' },
+        { status: 403 }
+      );
+    }
+
+    // Check if role exists
+    if (!user.role) {
+      return NextResponse.json(
+        { message: 'User role information is missing' },
+        { status: 403 }
+      );
+    }
+
     // Get the user's role permissions
     const rolePermissions = await getRolePermissions(user.role_id);
 
+    console.log(rolePermissions)
     // Generate JWT token with user ID, username, and role ID
     const token = generateToken({
       id: user.id,

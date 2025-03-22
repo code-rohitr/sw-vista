@@ -12,7 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [entities, setEntities] = useState<any[]>([]);
+  const [entityRoles, setEntityRoles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -22,14 +23,12 @@ export default function UserManagementPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  // Change the state variable declaration
-  const [role_id, setRoleId] = useState('');
-  // instead of:
-  // const [role, setRole] = useState('');
+  const [entity_id, setEntityId] = useState('');
+  const [entity_role_id, setEntityRoleId] = useState('');
   
   const { toast } = useToast();
 
-  // Fetch roles and users on component mount
+  // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -37,28 +36,26 @@ export default function UserManagementPage() {
         const token = localStorage.getItem('auth_token');
         if (!token) throw new Error('Not authenticated');
   
-        // Fetch users
-        const usersResponse = await fetch('/api/users', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        // Fetch all required data
+        const [usersRes, entitiesRes] = await Promise.all([
+          fetch('/api/users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('/api/entities', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+        ]);
         
-        if (!usersResponse.ok) throw new Error('Failed to fetch users');
-        const usersData = await usersResponse.json();
+        if (!usersRes.ok) throw new Error('Failed to fetch users');
+        if (!entitiesRes.ok) throw new Error('Failed to fetch entities');
+
+        const [usersData, entitiesData] = await Promise.all([
+          usersRes.json(),
+          entitiesRes.json()
+        ]);
+
         setUsers(usersData);
-  
-        // Fetch roles
-        const rolesResponse = await fetch('/api/roles', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!rolesResponse.ok) throw new Error('Failed to fetch roles');
-        const rolesData = await rolesResponse.json();
-        console.log('Fetched roles:', rolesData); // Debug log
-        setRoles(rolesData);
+        setEntities(entitiesData);
       } catch (error) {
         toast({
           title: 'Error',
@@ -73,12 +70,34 @@ export default function UserManagementPage() {
     fetchData();
   }, [toast]);
 
-  // In resetForm function
+  // Fetch entity roles when entity is selected
+  const fetchEntityRoles = async (entityId: string) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`/api/entity-roles?entityId=${entityId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch entity roles');
+      const data = await response.json();
+      setEntityRoles(data);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to fetch entity roles',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const resetForm = () => {
     setUsername('');
     setEmail('');
     setPassword('');
-    setRoleId('');
+    setEntityId('');
+    setEntityRoleId('');
     setSelectedUser(null);
     setIsEditMode(false);
   };
@@ -88,7 +107,6 @@ export default function UserManagementPage() {
     resetForm();
   };
   
-  // In handleOpenDialog function
   const handleOpenDialog = (user?: any) => {
     resetForm();
     
@@ -96,14 +114,17 @@ export default function UserManagementPage() {
       setSelectedUser(user);
       setUsername(user.username);
       setEmail(user.email);
-      setRoleId(user.role?.id?.toString() || '');
+      if (user.entityMembers?.[0]) {
+        setEntityId(user.entityMembers[0].entity_id.toString());
+        setEntityRoleId(user.entityMembers[0].entity_role_id.toString());
+        fetchEntityRoles(user.entityMembers[0].entity_id.toString());
+      }
       setIsEditMode(true);
     }
     
     setIsDialogOpen(true);
   };
   
-  // In handleCreateUser function
   const handleCreateUser = async () => {
     try {
       setIsLoading(true);
@@ -120,7 +141,8 @@ export default function UserManagementPage() {
           username,
           email,
           password,
-          role_id: parseInt(role_id) // Convert string to integer
+          entity_id: parseInt(entity_id),
+          entity_role_id: parseInt(entity_role_id)
         })
       });
 
@@ -156,12 +178,14 @@ export default function UserManagementPage() {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Not authenticated');
 
-      // Only include fields that are provided
-      const updateData: any = {};
+      const updateData: any = {
+        id: selectedUser.id,
+      };
       if (username) updateData.username = username;
       if (email) updateData.email = email;
       if (password) updateData.password = password;
-      if (role_id) updateData.role_id = parseInt(role_id); // Convert string to integer
+      if (entity_id) updateData.entity_id = parseInt(entity_id);
+      if (entity_role_id) updateData.entity_role_id = parseInt(entity_role_id);
 
       const response = await fetch(`/api/users/${selectedUser.id}`, {
         method: 'PUT',
@@ -262,8 +286,8 @@ export default function UserManagementPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>Username</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Entity</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Created At</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -274,11 +298,11 @@ export default function UserManagementPage() {
                   <TableCell>{user.username}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
-                    {typeof user.role === 'object' 
-                      ? (user.role?.role_name || user.role?.name || 'No role') 
-                      : user.role || 'No role'}
+                    {user.entityMembers?.[0]?.entity?.name || 'No entity'}
                   </TableCell>
-                  <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {user.entityMembers?.[0]?.entityRole?.name || 'No role'}
+                  </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button variant="outline" size="sm" onClick={() => handleOpenDialog(user)}>
@@ -340,23 +364,47 @@ export default function UserManagementPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              // The Select component can remain as is:
-              <Select value={role_id} onValueChange={setRoleId}>
-              <SelectTrigger>
-              <SelectValue placeholder="Select a role" />
-              </SelectTrigger>
-              <SelectContent>
-              {roles && roles.length > 0 ? (
-              roles.map((role) => (
-              <SelectItem key={role.id} value={role.id.toString()}>
-              {role.name || role.role_name}
-              </SelectItem>
-              ))
-              ) : (
-              <SelectItem value="no-roles" disabled>No roles available</SelectItem>
-              )}
-              </SelectContent>
+              <Label htmlFor="entity">Entity</Label>
+              <Select value={entity_id} onValueChange={(value) => {
+                setEntityId(value);
+                setEntityRoleId('');
+                fetchEntityRoles(value);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an entity" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entities && entities.length > 0 ? (
+                    entities.map((entity) => (
+                      <SelectItem key={entity.id} value={entity.id.toString()}>
+                        {entity.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-entities" disabled>No entities available</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="entityRole">Entity Role</Label>
+              <Select value={entity_role_id} onValueChange={setEntityRoleId} disabled={!entity_id}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an entity role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entityRoles && entityRoles.length > 0 ? (
+                    entityRoles.map((role) => (
+                      <SelectItem key={role.id} value={role.id.toString()}>
+                        {role.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-entity-roles" disabled>
+                      {entity_id ? 'No roles available for this entity' : 'Select an entity first'}
+                    </SelectItem>
+                  )}
+                </SelectContent>
               </Select>
             </div>
           </div>

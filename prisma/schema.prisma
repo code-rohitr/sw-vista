@@ -16,11 +16,12 @@ model Users {
   username      String                  @unique
   email         String                  @unique
   password_hash String
-  role_id       Int
+  role_id       Int?                    // Keep old role_id temporarily
+  is_admin      Boolean                 @default(false)  // For system-wide admin access
   created_at    DateTime                @default(now())
   
   // Relationships
-  role          Roles                   @relation(fields: [role_id], references: [id])
+  role          Roles?                  @relation(fields: [role_id], references: [id])
   feedbacks     EventFeedback[]
   proposals     Proposals[]             @relation("UserProposals")
   notifications CalendarNotifications[]
@@ -42,6 +43,22 @@ model Roles {
   // Relationships
   users         Users[]
   rolePermissions RolePermissions[]
+}
+
+model RolePermissions {
+  id            Int          @id @default(autoincrement())
+  role_id       Int
+  permission_id Int
+  resource_id   Int
+  created_at    DateTime     @default(now())
+  
+  // Relationships
+  role          Roles        @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    Permissions  @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  resource      Resources    @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  
+  // Unique constraint to prevent duplicates
+  @@unique([role_id, permission_id, resource_id])
 }
 
 model Permissions {
@@ -68,23 +85,7 @@ model Resources {
   entityRolePermissions EntityRolePermissions[]
 }
 
-model RolePermissions {
-  id            Int          @id @default(autoincrement())
-  role_id       Int
-  permission_id Int
-  resource_id   Int
-  created_at    DateTime     @default(now())
-  
-  // Relationships
-  role          Roles        @relation(fields: [role_id], references: [id], onDelete: Cascade)
-  permission    Permissions  @relation(fields: [permission_id], references: [id], onDelete: Cascade)
-  resource      Resources    @relation(fields: [resource_id], references: [id], onDelete: Cascade)
-  
-  // Unique constraint to prevent duplicates
-  @@unique([role_id, permission_id, resource_id])
-}
-
-// Entity Types
+// Entity Types (e.g., Club, Venue, Department)
 model EntityTypes {
   id          Int           @id @default(autoincrement())
   name        String        @unique
@@ -96,24 +97,7 @@ model EntityTypes {
   entityRoles EntityRoles[]
 }
 
-// Entity Roles
-model EntityRoles {
-  id                   Int                    @id @default(autoincrement())
-  name                 String
-  description          String?
-  created_at           DateTime               @default(now())
-  entity_type_id       Int
-  
-  // Relations
-  entityType           EntityTypes            @relation(fields: [entity_type_id], references: [id])
-  entityMembers        EntityMembers[]
-  entityRolePermissions EntityRolePermissions[] // Add this relation
-  
-  // Composite unique constraint
-  @@unique([name, entity_type_id])
-}
-
-// Entities
+// Entities (e.g., Chess Club, Main Hall, IT Department)
 model Entities {
   id             Int            @id @default(autoincrement())
   name           String
@@ -124,9 +108,31 @@ model Entities {
   // Relations
   entityType     EntityTypes    @relation(fields: [entity_type_id], references: [id])
   entityMembers  EntityMembers[]
+  entityRoles    EntityRoles[]  // Each entity can define its own roles
 }
 
-// Entity Members
+// Entity Roles (e.g., Owner, Admin, Member for a specific entity)
+model EntityRoles {
+  id                   Int                    @id @default(autoincrement())
+  name                 String
+  description          String?
+  created_at           DateTime               @default(now())
+  entity_type_id       Int                    // Keep entity_type_id temporarily
+  entity_id            Int?                   // Add entity_id as optional initially
+  is_default          Boolean                 @default(false)  // Indicates if this is a default role for the entity
+  
+  // Relations
+  entityType           EntityTypes            @relation(fields: [entity_type_id], references: [id])
+  entity               Entities?              @relation(fields: [entity_id], references: [id])
+  entityMembers        EntityMembers[]
+  entityRolePermissions EntityRolePermissions[]
+  
+  // Composite unique constraints
+  @@unique([name, entity_type_id])
+  @@unique([name, entity_id])
+}
+
+// Entity Members (Users assigned to entities with specific roles)
 model EntityMembers {
   id             Int         @id @default(autoincrement())
   entity_id      Int
@@ -143,6 +149,7 @@ model EntityMembers {
   @@unique([entity_id, user_id])
 }
 
+// Permissions for entity roles
 model EntityRolePermissions {
   id              Int           @id @default(autoincrement())
   entity_role_id  Int
