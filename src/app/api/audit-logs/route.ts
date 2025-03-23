@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { verifyToken } from '@/lib/auth';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   try {
@@ -68,7 +66,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Fetch logs from database
-    const logs = await prisma.auditLogs.findMany(query);
+    const logs = await prisma.auditLog.findMany(query);
     
     return NextResponse.json(logs);
   } catch (error) {
@@ -77,8 +75,6 @@ export async function GET(request: NextRequest) {
       { message: 'Failed to fetch audit logs' },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
@@ -98,7 +94,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     // Create audit log entry
-    const log = await prisma.auditLogs.create({
+    const log = await prisma.auditLog.create({
       data: {
         user_id: body.userId || user.id,
         entity_type: body.entityType,
@@ -115,7 +111,5 @@ export async function POST(request: NextRequest) {
       { message: 'Failed to create audit log' },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

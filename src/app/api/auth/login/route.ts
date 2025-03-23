@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Log successful login
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: user.id,
         entity_type: 'auth',

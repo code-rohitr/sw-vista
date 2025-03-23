@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     });
     
     // Log this action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: authResult.user.id,
         entity_type: 'permission',

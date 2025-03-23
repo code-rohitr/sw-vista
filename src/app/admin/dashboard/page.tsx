@@ -29,14 +29,14 @@ export default function AdminDashboardPage() {
         if (!usersResponse.ok) throw new Error('Failed to fetch users');
         const usersData = await usersResponse.json();
         
-        // Fetch roles
-        const rolesResponse = await fetch('/api/roles', {
+        // Fetch entity roles
+        const rolesResponse = await fetch('/api/entity-roles', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
         
-        if (!rolesResponse.ok) throw new Error('Failed to fetch roles');
+        if (!rolesResponse.ok) throw new Error('Failed to fetch entity roles');
         const rolesData = await rolesResponse.json();
         
         // Fetch permissions
@@ -93,8 +93,8 @@ export default function AdminDashboardPage() {
         
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Roles</CardTitle>
-            <CardDescription>Number of user roles</CardDescription>
+            <CardTitle className="text-sm font-medium">Total Entity Roles</CardTitle>
+            <CardDescription>Number of entity roles</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{stats.totalRoles}</div>
@@ -149,9 +149,9 @@ export default function AdminDashboardPage() {
                 <div className="text-lg font-medium">Manage Users</div>
               </CardContent>
             </Card>
-            <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={() => window.location.href = '/admin/roles'}>
+            <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={() => window.location.href = '/admin/entity-roles'}>
               <CardContent className="p-4 text-center">
-                <div className="text-lg font-medium">Manage Roles</div>
+                <div className="text-lg font-medium">Manage Entity Roles</div>
               </CardContent>
             </Card>
             <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={() => window.location.href = '/admin/permissions'}>

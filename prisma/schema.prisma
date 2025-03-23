@@ -9,154 +9,169 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// IAM System Models
-
-model Users {
-  id            Int                     @id @default(autoincrement())
-  username      String                  @unique
-  email         String                  @unique
+// Core Models
+model users {
+  id            Int              @id @default(autoincrement())
+  username      String           @unique
+  email         String           @unique
   password_hash String
+  created_at    DateTime         @default(now())
+  
+  // Relationships
+  entityMembers entityMembers[]
+  auditLogs     auditLog[]
+  reports       report[]         @relation("ReporterReports")
+  approvals     approval[]       @relation("ApproverApprovals")
+}
+
+model permissions {
+  id            Int                     @id @default(autoincrement())
+  name          String                  @unique
+  description   String?
+  action        String                  // view, create, update, delete
   created_at    DateTime                @default(now())
   
   // Relationships
-  auditLogs     AuditLogs[]
-  reports       Reports[]               @relation("ReporterReports")
-  approvals     Approvals[]             @relation("ApproverApprovals")
-  entityMembers EntityMembers[]
+  entityRolePermissions entityRolePermissions[]
+  permissionResources   permissionResources[]
 }
 
-model Permissions {
-  id            Int                    @id @default(autoincrement())
-  name          String                 @unique
+model resources {
+  id            Int                     @id @default(autoincrement())
+  name          String                  @unique
+  path          String                  @unique
   description   String?
-  action        String                 // view, create, update, delete
-  created_at    DateTime               @default(now())
+  created_at    DateTime                @default(now())
   
   // Relationships
-  entityRolePermissions EntityRolePermissions[]
+  permissionResources   permissionResources[]
+  entityRolePermissions entityRolePermissions[]
 }
 
-model Resources {
-  id            Int                    @id @default(autoincrement())
-  name          String                 @unique
-  path          String                 @unique
-  description   String?
-  created_at    DateTime               @default(now())
+// Junction Tables
+model permissionResources {
+  id            Int         @id @default(autoincrement())
+  permission_id Int
+  resource_id   Int
+  created_at    DateTime    @default(now())
   
   // Relationships
-  entityRolePermissions EntityRolePermissions[]
+  permission    permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  resource      resources   @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  
+  @@unique([permission_id, resource_id])
 }
 
-// Entity Types (e.g., Club, Venue, Department)
-model EntityTypes {
+model entityRolePermissions {
+  id              Int           @id @default(autoincrement())
+  entity_role_id  Int
+  permission_id   Int
+  resource_id     Int          // Keep this for now
+  created_at      DateTime      @default(now())
+  
+  // Relationships
+  entityRole      entityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
+  permission      permissions   @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  resource        resources     @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  
+  @@unique([entity_role_id, permission_id, resource_id])
+}
+
+// Entity Models
+model entityTypes {
   id          Int           @id @default(autoincrement())
   name        String        @unique
   description String?
   created_at  DateTime      @default(now())
   
-  // Relations
-  entities    Entities[]
-  entityRoles EntityRoles[]
+  // Relationships
+  entities    entity[]
+  entityRoles entityRoles[]
 }
 
-// Entities (e.g., Chess Club, Main Hall, IT Department)
-model Entities {
+model entity {
   id             Int            @id @default(autoincrement())
   name           String
   description    String?
   created_at     DateTime       @default(now())
   entity_type_id Int
   
-  // Relations
-  entityType     EntityTypes    @relation(fields: [entity_type_id], references: [id])
-  entityMembers  EntityMembers[]
-  entityRoles    EntityRoles[]  // Each entity can define its own roles
+  // Relationships
+  entityType     entityTypes    @relation(fields: [entity_type_id], references: [id])
+  entityMembers  entityMembers[]
+  entityRoles    entityRoles[]
 }
 
-// Entity Roles (e.g., Owner, Admin, Member for a specific entity)
-model EntityRoles {
-  id                   Int                    @id @default(autoincrement())
-  name                 String
-  description          String?
-  created_at           DateTime               @default(now())
-  entity_type_id       Int                    // Keep entity_type_id temporarily
-  entity_id            Int?                   // Add entity_id as optional initially
-  is_default          Boolean                 @default(false)  // Indicates if this is a default role for the entity
+model entityRoles {
+  id             Int                     @id @default(autoincrement())
+  name           String
+  description    String?
+  created_at     DateTime                @default(now())
+  entity_type_id Int
+  entity_id      Int?
+  is_default     Boolean                 @default(false)
   
-  // Relations
-  entityType           EntityTypes            @relation(fields: [entity_type_id], references: [id])
-  entity               Entities?              @relation(fields: [entity_id], references: [id])
-  entityMembers        EntityMembers[]
-  entityRolePermissions EntityRolePermissions[]
+  // Relationships
+  entityType     entityTypes             @relation(fields: [entity_type_id], references: [id])
+  entity         entity?                 @relation(fields: [entity_id], references: [id])
+  entityMembers  entityMembers[]
+  entityRolePermissions entityRolePermissions[]
   
-  // Composite unique constraints
   @@unique([name, entity_type_id])
   @@unique([name, entity_id])
 }
 
-// Entity Members (Users assigned to entities with specific roles)
-model EntityMembers {
+model entityMembers {
   id             Int         @id @default(autoincrement())
   entity_id      Int
   user_id        Int
   entity_role_id Int
   created_at     DateTime    @default(now())
   
-  // Relations
-  entity         Entities    @relation(fields: [entity_id], references: [id])
-  user           Users       @relation(fields: [user_id], references: [id])
-  entityRole     EntityRoles @relation(fields: [entity_role_id], references: [id])
+  // Relationships
+  entity         entity      @relation(fields: [entity_id], references: [id])
+  user           users       @relation(fields: [user_id], references: [id])
+  entityRole     entityRoles @relation(fields: [entity_role_id], references: [id])
   
-  // Composite unique constraint
   @@unique([entity_id, user_id])
 }
 
-// Permissions for entity roles
-model EntityRolePermissions {
-  id              Int           @id @default(autoincrement())
-  entity_role_id  Int
-  permission_id   Int
-  resource_id     Int
-  created_at      DateTime      @default(now())
-  
-  // Relationships
-  entityRole      EntityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
-  permission      Permissions   @relation(fields: [permission_id], references: [id], onDelete: Cascade)
-  resource        Resources     @relation(fields: [resource_id], references: [id], onDelete: Cascade)
-  
-  // Unique constraint to prevent duplicates
-  @@unique([entity_role_id, permission_id, resource_id])
-}
-
-model Reports {
-  id          Int           @id @default(autoincrement())
+// Audit and Reporting Models
+model report {
+  id          Int        @id @default(autoincrement())
   reporter_id Int
   report_type String
   content     String
   status      String
-  created_at  DateTime      @default(now())
-  reporter    Users         @relation("ReporterReports", fields: [reporter_id], references: [id])
-  approvals   Approvals[]
+  created_at  DateTime   @default(now())
+  
+  // Relationships
+  reporter    users      @relation("ReporterReports", fields: [reporter_id], references: [id])
+  approvals   approval[]
 }
 
-model Approvals {
-  id          Int      @id @default(autoincrement())
+model approval {
+  id          Int       @id @default(autoincrement())
   approver_id Int
   entity_type String
   entity_id   Int
   action      String
   remarks     String?
-  created_at  DateTime @default(now())
-  approver    Users    @relation("ApproverApprovals", fields: [approver_id], references: [id])
-  report      Reports? @relation(fields: [entity_id], references: [id])
+  created_at  DateTime  @default(now())
+  
+  // Relationships
+  approver    users     @relation("ApproverApprovals", fields: [approver_id], references: [id])
+  report      report?   @relation(fields: [entity_id], references: [id])
 }
 
-model AuditLogs {
+model auditLog {
   id          Int      @id @default(autoincrement())
   user_id     Int
   entity_type String
   entity_id   Int
   action      String
   timestamp   DateTime @default(now())
-  user        Users    @relation(fields: [user_id], references: [id])
+  
+  // Relationships
+  user        users    @relation(fields: [user_id], references: [id])
 }

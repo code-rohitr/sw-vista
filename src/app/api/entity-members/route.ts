@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if entity exists
-    const entity = await prisma.entities.findUnique({
+    const entity = await prisma.entity.findUnique({
       where: { id: entity_id }
     });
 
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Log action
-      await prisma.auditLogs.create({
+      await prisma.auditLog.create({
         data: {
           user_id: user.id, // Use the authenticated user's ID
           entity_type: 'entity_member',
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Log action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: user.id, // Use the authenticated user's ID
         entity_type: 'entity_member',
@@ -286,7 +286,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     // Log action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: user.id,
         entity_type: 'entity_member',

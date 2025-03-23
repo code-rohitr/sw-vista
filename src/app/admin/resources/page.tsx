@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 export default function ResourcesManagementPage() {
   const [resources, setResources] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [entityRoles, setEntityRoles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
@@ -22,7 +22,7 @@ export default function ResourcesManagementPage() {
   
   const { toast } = useToast();
 
-  // Fetch resources and roles on component mount
+  // Fetch resources and entity roles on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -40,20 +40,20 @@ export default function ResourcesManagementPage() {
         const resourcesData = await resourcesResponse.json();
         setResources(resourcesData);
 
-        // Fetch roles with permissions
-        const rolesResponse = await fetch('/api/roles', {
+        // Fetch entity roles with permissions
+        const rolesResponse = await fetch('/api/entity-roles', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
         
-        if (!rolesResponse.ok) throw new Error('Failed to fetch roles');
+        if (!rolesResponse.ok) throw new Error('Failed to fetch entity roles');
         const rolesData = await rolesResponse.json();
         
         // Fetch role permissions for each role
         const rolesWithPermissions = await Promise.all(
           rolesData.map(async (role: any) => {
-            const permissionsResponse = await fetch(`/api/roles/${role.id}/permissions`, {
+            const permissionsResponse = await fetch(`/api/entity-role-permissions?entityRoleId=${role.id}`, {
               headers: {
                 'Authorization': `Bearer ${token}`
               }
@@ -63,18 +63,18 @@ export default function ResourcesManagementPage() {
               const permissionsData = await permissionsResponse.json();
               return {
                 ...role,
-                rolePermissions: permissionsData
+                entityRolePermissions: permissionsData
               };
             }
             
             return {
               ...role,
-              rolePermissions: []
+              entityRolePermissions: []
             };
           })
         );
         
-        setRoles(rolesWithPermissions);
+        setEntityRoles(rolesWithPermissions);
       } catch (error) {
         toast({
           title: 'Error',
@@ -183,18 +183,18 @@ export default function ResourcesManagementPage() {
     }
   };
 
-  // Count how many role permissions use a specific resource
+  // Count how many entity role permissions use a specific resource
   const getResourceUsageCount = (resourceId: number) => {
-    return roles.reduce((count, role) => {
-      const usageCount = role.rolePermissions.filter((rp: any) => rp.resource_id === resourceId).length;
+    return entityRoles.reduce((count, role) => {
+      const usageCount = role.entityRolePermissions.filter((rp: any) => rp.resource_id === resourceId).length;
       return count + usageCount;
     }, 0);
   };
 
-  // Get roles that use a specific resource
-  const getRolesUsingResource = (resourceId: number) => {
-    return roles.filter(role => 
-      role.rolePermissions.some((rp: any) => rp.resource_id === resourceId)
+  // Get entity roles that use a specific resource
+  const getEntityRolesUsingResource = (resourceId: number) => {
+    return entityRoles.filter(role => 
+      role.entityRolePermissions.some((rp: any) => rp.resource_id === resourceId)
     );
   };
 
@@ -225,7 +225,7 @@ export default function ResourcesManagementPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Path</TableHead>
                 <TableHead>Description</TableHead>
-                <TableHead>Used By</TableHead>
+                <TableHead>Used By Entity Roles</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -238,10 +238,11 @@ export default function ResourcesManagementPage() {
                   <TableCell>{resource.description || '-'}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {getRolesUsingResource(resource.id).map(role => (
+                      {getEntityRolesUsingResource(resource.id).map(role => (
                         <span 
                           key={role.id} 
                           className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs"
+                          title={`${role.entity?.name || 'System'}`}
                         >
                           {role.name}
                         </span>

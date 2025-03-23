@@ -22,41 +22,11 @@ export default function EntityRoleManagementPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [selectedPermissionResources, setSelectedPermissionResources] = useState<Record<number, number[]>>({});
   const [permissions, setPermissions] = useState<any[]>([]);
   const [resources, setResources] = useState<any[]>([]);
   
   const { toast } = useToast();
-
-  // Fetch entity roles on component mount
-  useEffect(() => {
-    const fetchEntityRoles = async () => {
-      try {
-        setIsLoading(true);
-        const token = localStorage.getItem('auth_token');
-        if (!token) throw new Error('Not authenticated');
-  
-        const response = await fetch('/api/entity-roles', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!response.ok) throw new Error('Failed to fetch entity roles');
-        const data = await response.json();
-        setEntityRoles(data);
-      } catch (error) {
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'An error occurred',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-  
-    fetchEntityRoles();
-  }, [toast]);
 
   // Add entityTypes state
   const [entityTypes, setEntityTypes] = useState<any[]>([]);
@@ -121,11 +91,11 @@ export default function EntityRoleManagementPage() {
     setDescription('');
     setEntityTypeId('');
     setSelectedPermissions([]);
+    setSelectedPermissionResources({});
     setSelectedEntityRole(null);
     setIsEditMode(false);
   };
   
-  // Add handleCloseDialog function
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     resetForm();
@@ -140,7 +110,7 @@ export default function EntityRoleManagementPage() {
       setDescription(entityRole.description || '');
       setEntityTypeId(entityRole.entity_type_id);
       
-      // Fetch role permissions
+      // Fetch role permissions with resources
       try {
         const token = localStorage.getItem('auth_token');
         if (!token) throw new Error('Not authenticated');
@@ -152,8 +122,20 @@ export default function EntityRoleManagementPage() {
         if (!response.ok) throw new Error('Failed to fetch role permissions');
         const data = await response.json();
         
-        // Set selected permissions
-        setSelectedPermissions(data.map((rp: any) => rp.permission_id.toString()));
+        // Set selected permissions and their resources
+        const permissionIds = new Set<string>();
+        const permissionResources: Record<number, number[]> = {};
+        
+        data.forEach((rp: any) => {
+          permissionIds.add(rp.permission_id.toString());
+          if (!permissionResources[rp.permission_id]) {
+            permissionResources[rp.permission_id] = [];
+          }
+          permissionResources[rp.permission_id].push(rp.resource_id);
+        });
+        
+        setSelectedPermissions(Array.from(permissionIds));
+        setSelectedPermissionResources(permissionResources);
       } catch (error) {
         toast({
           title: 'Error',
@@ -203,24 +185,29 @@ export default function EntityRoleManagementPage() {
         throw new Error(roleData.message || 'Failed to create entity role');
       }
 
-      // Then assign permissions
+      // Then assign permissions with their resources
       if (selectedPermissions.length > 0) {
-        const permissionPromises = selectedPermissions.map(permissionId => 
-          fetch('/api/entity-role-permissions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              entity_role_id: roleData.id,
-              permission_id: parseInt(permissionId),
-              resource_id: resources[0].id // TODO: Allow selecting resources per permission
-            })
-          })
-        );
+        const permissionAssignments = selectedPermissions.flatMap(permissionId => {
+          const resourceIds = selectedPermissionResources[parseInt(permissionId)] || [];
+          return resourceIds.map(resourceId => ({
+            entity_role_id: roleData.id,
+            permission_id: parseInt(permissionId),
+            resource_id: resourceId
+          }));
+        });
 
-        await Promise.all(permissionPromises);
+        await Promise.all(
+          permissionAssignments.map(assignment =>
+            fetch('/api/entity-role-permissions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(assignment)
+            })
+          )
+        );
       }
   
       // Update entity roles list with the new role data
@@ -286,24 +273,29 @@ export default function EntityRoleManagementPage() {
         }
       });
 
-      // Assign new permissions
+      // Assign new permissions with their resources
       if (selectedPermissions.length > 0) {
-        const permissionPromises = selectedPermissions.map(permissionId => 
-          fetch('/api/entity-role-permissions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              entity_role_id: selectedEntityRole.id,
-              permission_id: parseInt(permissionId),
-              resource_id: resources[0].id // TODO: Allow selecting resources per permission
-            })
-          })
-        );
+        const permissionAssignments = selectedPermissions.flatMap(permissionId => {
+          const resourceIds = selectedPermissionResources[parseInt(permissionId)] || [];
+          return resourceIds.map(resourceId => ({
+            entity_role_id: selectedEntityRole.id,
+            permission_id: parseInt(permissionId),
+            resource_id: resourceId
+          }));
+        });
 
-        await Promise.all(permissionPromises);
+        await Promise.all(
+          permissionAssignments.map(assignment =>
+            fetch('/api/entity-role-permissions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(assignment)
+            })
+          )
+        );
       }
 
       // Update entity roles list
@@ -364,7 +356,6 @@ export default function EntityRoleManagementPage() {
     }
   };
 
-  // Add the missing render section
   return (
     <div className="container mx-auto py-6">
       <div className="flex justify-between items-center mb-6">
@@ -408,8 +399,9 @@ export default function EntityRoleManagementPage() {
                           <span 
                             key={rp.id}
                             className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs"
+                            title={`${rp.permission.name} on ${rp.resource.name}`}
                           >
-                            {rp.permission.name}
+                            {rp.permission.name} ({rp.resource.name})
                           </span>
                         ))}
                       </div>
@@ -497,26 +489,68 @@ export default function EntityRoleManagementPage() {
             </div>
 
             <div className="grid grid-cols-4 items-start gap-4">
-              <Label className="text-right mt-2">Permissions</Label>
-              <div className="col-span-3 space-y-2">
+              <Label className="text-right mt-2">Permissions & Resources</Label>
+              <div className="col-span-3 space-y-4">
                 {permissions.map((permission) => (
-                  <div key={permission.id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={`permission-${permission.id}`}
-                      checked={selectedPermissions.includes(permission.id.toString())}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedPermissions([...selectedPermissions, permission.id.toString()]);
-                        } else {
-                          setSelectedPermissions(selectedPermissions.filter(id => id !== permission.id.toString()));
-                        }
-                      }}
-                    />
-                    <Label htmlFor={`permission-${permission.id}`}>
-                      {permission.name}
-                      <span className="text-xs text-gray-500 ml-1">({permission.action})</span>
-                    </Label>
+                  <div key={permission.id} className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={`permission-${permission.id}`}
+                        checked={selectedPermissions.includes(permission.id.toString())}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPermissions([...selectedPermissions, permission.id.toString()]);
+                          } else {
+                            setSelectedPermissions(selectedPermissions.filter(id => id !== permission.id.toString()));
+                            // Clear resource selections for this permission
+                            const { [permission.id]: _, ...rest } = selectedPermissionResources;
+                            setSelectedPermissionResources(rest);
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`permission-${permission.id}`}>
+                        {permission.name}
+                        <span className="text-xs text-gray-500 ml-1">({permission.action})</span>
+                      </Label>
+                    </div>
+                    {selectedPermissions.includes(permission.id.toString()) && (
+                      <div className="ml-6 pl-2 border-l-2 border-gray-200">
+                        <Label className="text-sm text-gray-500 mb-1">Select Resources:</Label>
+                        <div className="space-y-1">
+                          {resources.map((resource) => (
+                            <div key={resource.id} className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                id={`permission-${permission.id}-resource-${resource.id}`}
+                                checked={selectedPermissionResources[permission.id]?.includes(resource.id)}
+                                onChange={(e) => {
+                                  const currentResources = selectedPermissionResources[permission.id] || [];
+                                  if (e.target.checked) {
+                                    setSelectedPermissionResources({
+                                      ...selectedPermissionResources,
+                                      [permission.id]: [...currentResources, resource.id]
+                                    });
+                                  } else {
+                                    setSelectedPermissionResources({
+                                      ...selectedPermissionResources,
+                                      [permission.id]: currentResources.filter(id => id !== resource.id)
+                                    });
+                                  }
+                                }}
+                              />
+                              <Label 
+                                htmlFor={`permission-${permission.id}-resource-${resource.id}`}
+                                className="text-sm"
+                              >
+                                {resource.name}
+                                <span className="text-xs text-gray-500 ml-1">({resource.path})</span>
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -529,7 +563,10 @@ export default function EntityRoleManagementPage() {
             </Button>
             <Button 
               onClick={isEditMode ? handleUpdateEntityRole : handleCreateEntityRole}
-              disabled={!name}
+              disabled={!name || !entityTypeId || selectedPermissions.some(permId => 
+                !selectedPermissionResources[parseInt(permId)] || 
+                selectedPermissionResources[parseInt(permId)].length === 0
+              )}
             >
               {isEditMode ? 'Update' : 'Create'}
             </Button>

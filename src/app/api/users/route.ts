@@ -173,7 +173,7 @@ export async function PUT(request: NextRequest) {
       // Update entity membership if provided
       if (entity_id && entity_role_id) {
         // Check if entity exists
-        const entity = await tx.entities.findUnique({
+        const entity = await tx.entity.findUnique({
           where: { id: entity_id },
         });
 
@@ -252,7 +252,7 @@ export async function PUT(request: NextRequest) {
     const { password_hash: _, ...userWithoutPassword } = updatedUser;
 
     // Log this action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: authResult.user.id,
         entity_type: 'user',
@@ -304,7 +304,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     // Log this action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: authResult.user.id,
         entity_type: 'user',

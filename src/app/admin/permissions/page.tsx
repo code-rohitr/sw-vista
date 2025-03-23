@@ -21,6 +21,7 @@ export default function PermissionsManagementPage() {
   const [permissionName, setPermissionName] = useState('');
   const [permissionDescription, setPermissionDescription] = useState('');
   const [permissionAction, setPermissionAction] = useState('view');
+  const [selectedResources, setSelectedResources] = useState<number[]>([]);
   
   const { toast } = useToast();
 
@@ -30,49 +31,63 @@ export default function PermissionsManagementPage() {
         const token = localStorage.getItem('auth_token');
         if (!token) throw new Error('Not authenticated');
 
-        // Fetch permissions
-        const permissionsResponse = await fetch('/api/permissions', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        // Fetch all data in parallel
+        const [permissionsRes, resourcesRes, entityRolesRes] = await Promise.all([
+          fetch('/api/permissions', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('/api/resources', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('/api/entity-roles', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+        ]);
         
-        if (!permissionsResponse.ok) throw new Error('Failed to fetch permissions');
-        const permissionsData = await permissionsResponse.json();
-        setPermissions(permissionsData);
+        if (!permissionsRes.ok) throw new Error('Failed to fetch permissions');
+        if (!resourcesRes.ok) throw new Error('Failed to fetch resources');
+        if (!entityRolesRes.ok) throw new Error('Failed to fetch entity roles');
 
-        // Fetch resources
-        const resourcesResponse = await fetch('/api/resources', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        const [permissionsData, resourcesData, entityRolesData] = await Promise.all([
+          permissionsRes.json(),
+          resourcesRes.json(),
+          entityRolesRes.json()
+        ]);
+
+        // Get permissions with their resources
+        const permissionsWithResources = await Promise.all(
+          permissionsData.map(async (permission: any) => {
+            const permissionResourcesRes = await fetch(`/api/permission-resources?permissionId=${permission.id}`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (permissionResourcesRes.ok) {
+              const resourcesData = await permissionResourcesRes.json();
+              return {
+                ...permission,
+                resources: resourcesData.map((pr: any) => pr.resource)
+              };
+            }
+            
+            return {
+              ...permission,
+              resources: []
+            };
+          })
+        );
         
-        if (!resourcesResponse.ok) throw new Error('Failed to fetch resources');
-        const resourcesData = await resourcesResponse.json();
+        setPermissions(permissionsWithResources);
         setResources(resourcesData);
-
-        // Fetch entity roles
-        const entityRolesResponse = await fetch('/api/entity-roles', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!entityRolesResponse.ok) throw new Error('Failed to fetch entity roles');
-        const entityRolesData = await entityRolesResponse.json();
         
         // Get permissions for each entity role
         const rolesWithPermissions = await Promise.all(
           entityRolesData.map(async (role: any) => {
-            const rolePermissionsResponse = await fetch(`/api/entity-role-permissions?entityRoleId=${role.id}`, {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
+            const rolePermissionsRes = await fetch(`/api/entity-role-permissions?entityRoleId=${role.id}`, {
+              headers: { 'Authorization': `Bearer ${token}` }
             });
             
-            if (rolePermissionsResponse.ok) {
-              const permissionsData = await rolePermissionsResponse.json();
+            if (rolePermissionsRes.ok) {
+              const permissionsData = await rolePermissionsRes.json();
               return {
                 ...role,
                 entityRolePermissions: permissionsData
@@ -105,6 +120,7 @@ export default function PermissionsManagementPage() {
     setPermissionName('');
     setPermissionDescription('');
     setPermissionAction('view');
+    setSelectedResources([]);
     setIsDialogOpen(true);
   };
 
@@ -118,7 +134,8 @@ export default function PermissionsManagementPage() {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Not authenticated');
 
-      const response = await fetch('/api/permissions', {
+      // First create the permission
+      const createPermissionRes = await fetch('/api/permissions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,14 +148,37 @@ export default function PermissionsManagementPage() {
         })
       });
 
-      const data = await response.json();
+      const permissionData = await createPermissionRes.json();
       
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to create permission');
+      if (!createPermissionRes.ok) {
+        throw new Error(permissionData.message || 'Failed to create permission');
       }
 
-      // Update permissions list
-      setPermissions([...permissions, data]);
+      // Then create permission-resource relationships
+      if (selectedResources.length > 0) {
+        await Promise.all(
+          selectedResources.map(resourceId =>
+            fetch('/api/permission-resources', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                permission_id: permissionData.id,
+                resource_id: resourceId
+              })
+            })
+          )
+        );
+      }
+
+      // Update permissions list with the new permission and its resources
+      const newPermission = {
+        ...permissionData,
+        resources: resources.filter(r => selectedResources.includes(r.id))
+      };
+      setPermissions([...permissions, newPermission]);
       
       toast({
         title: 'Success',
@@ -199,6 +239,7 @@ export default function PermissionsManagementPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Action</TableHead>
+                <TableHead>Resources</TableHead>
                 <TableHead>Used By Entity Roles</TableHead>
               </TableRow>
             </TableHeader>
@@ -209,6 +250,22 @@ export default function PermissionsManagementPage() {
                   <TableCell>{permission.name}</TableCell>
                   <TableCell>{permission.description || '-'}</TableCell>
                   <TableCell>{permission.action}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {permission.resources?.map((resource: any) => (
+                        <span 
+                          key={resource.id}
+                          className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-xs"
+                          title={resource.path}
+                        >
+                          {resource.name}
+                        </span>
+                      ))}
+                      {(!permission.resources || permission.resources.length === 0) && (
+                        <span className="text-gray-500 text-xs">No resources</span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {getEntityRolesUsingPermission(permission.id).map(role => (
@@ -260,7 +317,7 @@ export default function PermissionsManagementPage() {
                           className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs"
                           title={`${rp.permission?.action} on ${rp.resource?.name}`}
                         >
-                          {rp.permission?.name}
+                          {rp.permission?.name} ({rp.resource?.name})
                         </span>
                       ))}
                     </div>
@@ -277,7 +334,7 @@ export default function PermissionsManagementPage() {
           <DialogHeader>
             <DialogTitle>Create New Permission Type</DialogTitle>
             <DialogDescription>
-              Create a new permission type that can be assigned to entity roles.
+              Create a new permission type and assign resources it can access.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -317,6 +374,31 @@ export default function PermissionsManagementPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Resources</Label>
+              <div className="space-y-2 border rounded p-4">
+                {resources.map((resource) => (
+                  <div key={resource.id} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={`resource-${resource.id}`}
+                      checked={selectedResources.includes(resource.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedResources([...selectedResources, resource.id]);
+                        } else {
+                          setSelectedResources(selectedResources.filter(id => id !== resource.id));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`resource-${resource.id}`}>
+                      {resource.name}
+                      <span className="text-xs text-gray-500 ml-1">({resource.path})</span>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={handleCloseDialog}>
@@ -324,7 +406,7 @@ export default function PermissionsManagementPage() {
             </Button>
             <Button 
               onClick={handleCreatePermission}
-              disabled={!permissionName || !permissionAction}
+              disabled={!permissionName || !permissionAction || selectedResources.length === 0}
             >
               Create Permission
             </Button>

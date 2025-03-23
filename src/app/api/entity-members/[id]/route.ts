@@ -161,7 +161,7 @@ export async function PUT(
     });
 
     // Log action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: user.id,
         entity_type: 'entity_member',
@@ -239,7 +239,7 @@ export async function DELETE(
     });
 
     // Log action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: user.id,
         entity_type: 'entity_member',

@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all entities
-    const entities = await prisma.entities.findMany({
+    const entities = await prisma.entity.findMany({
       orderBy: { created_at: 'desc' }
     });
 
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create entity
-    const entity = await prisma.entities.create({
+    const entity = await prisma.entity.create({
       data: {
         name,
         description,

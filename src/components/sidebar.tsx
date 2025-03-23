@@ -2,15 +2,26 @@
 
 import { motion } from "framer-motion"
 import Link from "next/link"
-import { FaThLarge, FaFileAlt, FaUsers } from "react-icons/fa"
+import { FaThLarge, FaUsers, FaUserShield, FaKey, FaLock, FaHistory, FaServer } from "react-icons/fa"
 import { Switch } from "@/components/ui/switch"
+import { useAuth } from "@/contexts/AuthContext"
 
 export function Sidebar() {
+  const auth = useAuth();
+
   const menuItems = [
     { icon: <FaThLarge size={18} />, label: "Dashboard", description: "System Overview and Insights", href: "/dashboard" },
     { icon: <FaUsers size={18} />, label: "Entities", description: "Manage Your Entities", href: "/entities" },
-    { icon: <FaFileAlt size={18} />, label: "Reports", description: "View and Generate Reports", href: "/reports" },
-  ]
+  ];
+
+  const adminMenuItems = [
+    { icon: <FaThLarge size={18} />, label: "Admin Dashboard", description: "System Administration", href: "/admin/dashboard" },
+    { icon: <FaUsers size={18} />, label: "Users", description: "Manage System Users", href: "/admin/users" },
+    { icon: <FaUserShield size={18} />, label: "Entity Roles", description: "Manage Entity Roles", href: "/admin/entity-roles" },
+    { icon: <FaKey size={18} />, label: "Permissions", description: "Configure Permissions", href: "/admin/permissions" },
+    { icon: <FaServer size={18} />, label: "Resources", description: "Manage API Resources", href: "/admin/resources" },
+    { icon: <FaHistory size={18} />, label: "Audit Logs", description: "View System Logs", href: "/admin/audit-logs" },
+  ];
 
   return (
     <motion.div
@@ -35,7 +46,7 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Navigation */}
+        {/* Regular Navigation */}
         <nav className="space-y-2">
           {menuItems.map((item) => (
             <motion.div
@@ -57,6 +68,36 @@ export function Sidebar() {
             </motion.div>
           ))}
         </nav>
+
+        {/* Admin Navigation */}
+        {auth.isSystemAdmin() && (
+          <>
+            <div className="pt-4">
+              <h2 className="text-sm font-semibold text-gray-500 px-3">Administration</h2>
+            </div>
+            <nav className="space-y-2">
+              {adminMenuItems.map((item) => (
+                <motion.div
+                  key={item.label}
+                  whileHover={{ x: 4 }}
+                  transition={{ duration: 0.2 }}
+                  className="border-b border-gray-200"
+                >
+                  <Link 
+                    href={item.href}
+                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="mt-1 text-gray-700">{item.icon}</span>
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium">{item.label}</p>
+                      <p className="text-xs text-gray-500 leading-tight">{item.description}</p>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
+            </nav>
+          </>
+        )}
       </div>
 
       {/* Logout Button */}

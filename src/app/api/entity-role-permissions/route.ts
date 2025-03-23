@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Log action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: authResult.user.id,
         entity_type: 'entity_role_permission',
@@ -160,7 +160,9 @@ export async function POST(request: NextRequest) {
 
 /**
  * DELETE /api/entity-role-permissions
- * Remove a permission from an entity role for a specific resource
+ * Remove permissions from an entity role. If entityRoleId is provided alone,
+ * removes all permissions for that role. If permissionId and resourceId are also
+ * provided, removes only that specific permission-resource combination.
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -176,50 +178,74 @@ export async function DELETE(request: NextRequest) {
     const permissionId = url.searchParams.get('permissionId');
     const resourceId = url.searchParams.get('resourceId');
 
-    // Validate required parameters
-    if (!entityRoleId || !permissionId || !resourceId) {
+    // Validate entityRoleId is required
+    if (!entityRoleId) {
       return NextResponse.json(
-        { message: 'Entity role ID, permission ID, and resource ID are required' },
+        { message: 'Entity role ID is required' },
         { status: 400 }
       );
     }
 
-    // Check if entity role permission exists
-    const entityRolePermission = await prisma.entityRolePermissions.findUnique({
-      where: {
-        entity_role_id_permission_id_resource_id: {
-          entity_role_id: parseInt(entityRoleId),
-          permission_id: parseInt(permissionId),
-          resource_id: parseInt(resourceId),
+    // If permissionId and resourceId are provided, delete specific permission
+    if (permissionId && resourceId) {
+      const entityRolePermission = await prisma.entityRolePermissions.findUnique({
+        where: {
+          entity_role_id_permission_id_resource_id: {
+            entity_role_id: parseInt(entityRoleId),
+            permission_id: parseInt(permissionId),
+            resource_id: parseInt(resourceId),
+          },
         },
-      },
-    });
+      });
 
-    if (!entityRolePermission) {
-      return NextResponse.json(
-        { message: 'Entity role permission not found' },
-        { status: 404 }
-      );
+      if (!entityRolePermission) {
+        return NextResponse.json(
+          { message: 'Entity role permission not found' },
+          { status: 404 }
+        );
+      }
+
+      // Delete specific permission
+      await prisma.entityRolePermissions.delete({
+        where: {
+          id: entityRolePermission.id,
+        },
+      });
+
+      // Log action
+      await prisma.auditLog.create({
+        data: {
+          user_id: authResult.user.id,
+          entity_type: 'entity_role_permission',
+          entity_id: entityRolePermission.id,
+          action: 'delete_entity_role_permission',
+        },
+      });
+
+      return NextResponse.json({ message: 'Entity role permission deleted successfully' });
     }
 
-    // Delete entity role permission
-    await prisma.entityRolePermissions.delete({
+    // If only entityRoleId is provided, delete all permissions for that role
+    const deletedPermissions = await prisma.entityRolePermissions.deleteMany({
       where: {
-        id: entityRolePermission.id,
+        entity_role_id: parseInt(entityRoleId),
       },
     });
 
     // Log action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: authResult.user.id,
-        entity_type: 'entity_role_permission',
-        entity_id: entityRolePermission.id,
-        action: 'delete_entity_role_permission',
+        entity_type: 'entity_role',
+        entity_id: parseInt(entityRoleId),
+        action: 'delete_all_entity_role_permissions',
       },
     });
 
-    return NextResponse.json({ message: 'Entity role permission deleted successfully' });
+    return NextResponse.json({ 
+      message: 'All entity role permissions deleted successfully',
+      count: deletedPermissions.count
+    });
   } catch (error) {
     console.error('Error deleting entity role permission:', error);
     return NextResponse.json(

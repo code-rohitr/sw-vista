@@ -61,7 +61,7 @@ async function main() {
   console.log('System entity type created');
 
   // Create System entity
-  let systemEntity = await prisma.entities.findFirst({
+  let systemEntity = await prisma.entity.findFirst({
     where: {
       name: 'System',
       entity_type_id: systemEntityType.id,
@@ -69,7 +69,7 @@ async function main() {
   });
 
   if (!systemEntity) {
-    systemEntity = await prisma.entities.create({
+    systemEntity = await prisma.entity.create({
       data: {
         name: 'System',
         description: 'System administration entity',
@@ -101,27 +101,53 @@ async function main() {
     },
   });
 
-  // Assign all permissions to godmode role
+  // First, create permission-resource mappings
   await Promise.all(
-    createdResources.map(resource => {
-      const managePermissionId = createdPermissions.find(p => p.name === 'manage')!.id;
-      
-      return prisma.entityRolePermissions.upsert({
-        where: {
-          entity_role_id_permission_id_resource_id: {
-            entity_role_id: systemAdminRole.id,
-            permission_id: managePermissionId,
-            resource_id: resource.id,
-          }
-        },
-        update: {}, // No updates needed if it exists
-        create: {
-          entity_role_id: systemAdminRole.id,
-          permission_id: managePermissionId,
-          resource_id: resource.id,
-        },
-      });
-    })
+    createdPermissions.map(permission =>
+      Promise.all(
+        createdResources.map(resource =>
+          prisma.permissionResources.upsert({
+            where: {
+              permission_id_resource_id: {
+                permission_id: permission.id,
+                resource_id: resource.id,
+              }
+            },
+            update: {},
+            create: {
+              permission_id: permission.id,
+              resource_id: resource.id,
+            },
+          })
+        )
+      )
+    )
+  );
+  console.log('Permission-resource mappings created');
+
+  // Then assign permissions to System Admin role with resources
+  await Promise.all(
+    createdPermissions.map(permission =>
+      Promise.all(
+        createdResources.map(resource =>
+          prisma.entityRolePermissions.upsert({
+            where: {
+              entity_role_id_permission_id_resource_id: {
+                entity_role_id: systemAdminRole.id,
+                permission_id: permission.id,
+                resource_id: resource.id,
+              }
+            },
+            update: {},
+            create: {
+              entity_role_id: systemAdminRole.id,
+              permission_id: permission.id,
+              resource_id: resource.id,
+            },
+          })
+        )
+      )
+    )
   );
   console.log('System Admin role and permissions created');
 

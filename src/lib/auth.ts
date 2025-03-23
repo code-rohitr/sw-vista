@@ -207,7 +207,6 @@ export async function checkPermission(
     }
   }
 
-  
   return false;
 }
 

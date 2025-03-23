@@ -22,7 +22,7 @@ export async function GET(
       );
     }
 
-    const entity = await prisma.entities.findUnique({
+    const entity = await prisma.entity.findUnique({
       where: { id },
       include: {
         entityType: true,
