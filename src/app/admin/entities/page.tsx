@@ -6,15 +6,19 @@ import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import EntityForm from '@/components/entity/EntityForm';
+import { useRouter } from 'next/navigation';
 
+// Then inside your component:
 export default function EntityManagementPage() {
   const [entities, setEntities] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<any>(null);
-  
+
   const { toast } = useToast();
+  const router = useRouter();
+
 
   // Fetch entities on component mount
   useEffect(() => {
@@ -189,17 +193,28 @@ export default function EntityManagementPage() {
             </TableHeader>
             <TableBody>
               {entities.map((entity) => (
-                <TableRow key={entity.id}>
+                // Inside your TableRow for entities, update the row to be clickable:
+                <TableRow 
+                  key={entity.id} 
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => router.push(`/admin/entities/${entity.id}`)}
+                >
                   <TableCell>{entity.id}</TableCell>
                   <TableCell>{entity.name}</TableCell>
-                  <TableCell className="max-w-xs truncate">{entity.description}</TableCell>
-                  <TableCell>{new Date(entity.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell>{entity.description || 'No description'}</TableCell>
+                  <TableCell>{entity.entityType?.name || 'Unknown'}</TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => handleOpenDialog(entity)}>
+                      <Button variant="outline" size="sm" onClick={(e) => {
+                        e.stopPropagation(); // Prevent row click
+                        handleOpenDialog(entity);
+                      }}>
                         Edit
                       </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteEntity(entity.id)}>
+                      <Button variant="destructive" size="sm" onClick={(e) => {
+                        e.stopPropagation(); // Prevent row click
+                        handleDeleteEntity(entity.id);
+                      }}>
                         Delete
                       </Button>
                     </div>
