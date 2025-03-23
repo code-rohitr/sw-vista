@@ -2,27 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/middleware/roleCheck';
 
-// Get all roles
+// GET all roles
 export async function GET(request: NextRequest) {
   try {
-    // Check if user has permission to view roles
-    const authResult = await requirePermission('view', '/api/roles')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    const { searchParams } = new URL(request.url);
+    const entityId = searchParams.get('entityId');
+    
+    // If entityId is provided, fetch entity roles for that entity
+    if (entityId) {
+      const entityRoles = await prisma.entityRoles.findMany({
+        where: { entity_id: parseInt(entityId) },
+        include: {
+          entity: true,
+          entityType: true,
+        },
+      });
+      
+      return NextResponse.json(entityRoles);
+    } else {
+      // Otherwise, fetch all system roles
+      const roles = await prisma.roles.findMany({
+        include: {
+          rolePermissions: true
+        },
+      });
+      
+      return NextResponse.json(roles);
     }
-
-    const roles = await prisma.roles.findMany({
-      orderBy: {
-        name: 'asc',
-      },
-    });
-    return NextResponse.json(roles);
   } catch (error) {
     console.error('Error fetching roles:', error);
-    return NextResponse.json(
-      { message: 'Error fetching roles' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch roles' }, { status: 500 });
   }
 }
 

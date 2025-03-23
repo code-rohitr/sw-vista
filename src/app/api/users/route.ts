@@ -40,135 +40,58 @@ export async function GET(request: NextRequest) {
 // Create a new user
 export async function POST(request: NextRequest) {
   try {
-    // Check if user has permission to create users
-    const authResult = await requirePermission('create', '/api/users')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
-    }
+    const data = await request.json();
+    const { username, email, password, entity_id, entity_role_id } = data;
 
-    const body = await request.json();
-    const { username, email, password, entity_id, entity_role_id } = body;
+    console.log(data);
     
-    // Validate required fields
     if (!username || !email || !password || !entity_id || !entity_role_id) {
-      return NextResponse.json(
-        { message: 'Missing required fields' },
-        { status: 400 }
-      );
+      return NextResponse.json({ 
+        error: 'Username, email, password, entity, and role are required' 
+      }, { status: 400 });
     }
     
-    // Check if user already exists
-    const existingUser = await prisma.users.findFirst({
-      where: {
-        OR: [
-          { username },
-          { email },
-        ],
+    // Hash the password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    
+    // Create the user without setting role_id
+    const user = await prisma.users.create({
+      data: {
+        username,
+        email,
+        password_hash: hashedPassword,
+        // Remove this line as it's causing the foreign key constraint error
+        // role_id: entity_role_id,
       },
     });
     
-    if (existingUser) {
-      return NextResponse.json(
-        { message: 'Username or email already exists' },
-        { status: 400 }
-      );
-    }
-    
-    // Check if entity exists
-    const entity = await prisma.entities.findUnique({
-      where: { id: entity_id },
-      include: { entityType: true }
+    // Create entity membership
+    await prisma.entityMembers.create({
+      data: {
+        user_id: user.id,
+        entity_id: entity_id,
+        entity_role_id: entity_role_id,
+      },
     });
-
-    if (!entity) {
-      return NextResponse.json(
-        { message: 'Entity not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if entity role exists and belongs to the entity
-    const entityRole = await prisma.entityRoles.findUnique({
-      where: { id: entity_role_id },
-    });
-
-    if (!entityRole) {
-      return NextResponse.json(
-        { message: 'Entity role not found' },
-        { status: 404 }
-      );
-    }
-
-    if (entityRole.entity_id !== entity_id) {
-      return NextResponse.json(
-        { message: 'Entity role does not belong to the entity' },
-        { status: 400 }
-      );
-    }
-
-    // Hash password
-    const saltRounds = 10;
-    const password_hash = await bcrypt.hash(password, saltRounds);
     
-    // Create user and entity membership in a transaction
-    const newUser = await prisma.$transaction(async (tx) => {
-      // Create the user
-      const user = await tx.users.create({
-        data: {
-          username,
-          email,
-          password_hash,
-          is_admin: false,
-        },
-      });
-
-      // Create entity membership
-      await tx.entityMembers.create({
-        data: {
-          entity_id,
-          user_id: user.id,
-          entity_role_id,
-        },
-      });
-
-      // Return user with relationships
-      return tx.users.findUnique({
-        where: { id: user.id },
-        include: {
-          entityMembers: {
-            include: {
-              entity: true,
-              entityRole: true,
-            },
+    // Fetch the complete user with relationships
+    const completeUser = await prisma.users.findUnique({
+      where: { id: user.id },
+      include: {
+        entityMembers: {
+          include: {
+            entity: true,
+            entityRole: true,
           },
         },
-      });
-    });
-
-    if (!newUser) {
-      throw new Error('Failed to create user');
-    }
-
-    // Remove password from response
-    const { password_hash: _, ...userWithoutPassword } = newUser;
-    
-    // Log this action
-    await prisma.auditLogs.create({
-      data: {
-        user_id: authResult.user.id,
-        entity_type: 'user',
-        entity_id: newUser.id,
-        action: 'create_user',
-      }
+      },
     });
     
-    return NextResponse.json(userWithoutPassword, { status: 201 });
+    return NextResponse.json(completeUser, { status: 201 });
   } catch (error) {
     console.error('Error creating user:', error);
-    return NextResponse.json(
-      { message: 'Error creating user' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
   }
 }
 

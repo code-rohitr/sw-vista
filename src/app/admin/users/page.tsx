@@ -5,19 +5,48 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+// Define interfaces for your data types
+interface Entity {
+  id: number;
+  name: string;
+  description?: string;
+  entity_type_id: number;
+}
+
+interface EntityRole {
+  id: number;
+  name: string;
+  description?: string;
+  entity_id: number;
+  entity_type_id: number;
+}
+
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  is_admin: boolean;
+  entityMembers?: {
+    entity: Entity;
+    entityRole: EntityRole;
+    entity_id: number;
+    entity_role_id: number;
+  }[];
+}
+
 export default function UserManagementPage() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [entities, setEntities] = useState<any[]>([]);
-  const [entityRoles, setEntityRoles] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [entityRoles, setEntityRoles] = useState<EntityRole[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   
   // Form state
   const [username, setUsername] = useState('');
@@ -130,28 +159,44 @@ export default function UserManagementPage() {
       setIsLoading(true);
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Not authenticated');
-
+  
+      // Validate required fields
+      if (!username || !email || !password || !entity_id || !entity_role_id) {
+        throw new Error('All fields are required');
+      }
+  
+      // Try with different field name combinations
+      const userData = {
+        username,
+        email,
+        password,
+        // Try both formats to see which one works
+        entity: parseInt(entity_id),
+        role: parseInt(entity_role_id),
+        entity_id: parseInt(entity_id),
+        entity_role_id: parseInt(entity_role_id)
+      };
+  
+      console.log('Sending user data:', userData);
+  
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          username,
-          email,
-          password,
-          entity_id: parseInt(entity_id),
-          entity_role_id: parseInt(entity_role_id)
-        })
+        body: JSON.stringify(userData)
       });
-
+  
+      // Log the full response for debugging
+      console.log('Response status:', response.status);
       const data = await response.json();
+      console.log('Response data:', data);
       
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to create user');
+        throw new Error(data.message || data.error || `Failed to create user: ${response.status} ${response.statusText}`);
       }
-
+  
       // Update users list
       setUsers([...users, data]);
       
@@ -162,6 +207,7 @@ export default function UserManagementPage() {
       
       handleCloseDialog();
     } catch (error) {
+      console.error('Error creating user:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'An error occurred',
@@ -174,19 +220,29 @@ export default function UserManagementPage() {
 
   const handleUpdateUser = async () => {
     try {
+      if (!selectedUser) {
+        toast({
+          title: 'Error',
+          description: 'No user selected for update',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       setIsLoading(true);
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Not authenticated');
-
+  
+      // Update field names to match what the server expects
       const updateData: any = {
         id: selectedUser.id,
       };
       if (username) updateData.username = username;
       if (email) updateData.email = email;
       if (password) updateData.password = password;
-      if (entity_id) updateData.entity_id = parseInt(entity_id);
-      if (entity_role_id) updateData.entity_role_id = parseInt(entity_role_id);
-
+      if (entity_id) updateData.entity = parseInt(entity_id);       // Changed from entity_id to entity
+      if (entity_role_id) updateData.role = parseInt(entity_role_id); // Changed from entity_role_id to role
+  
       const response = await fetch(`/api/users/${selectedUser.id}`, {
         method: 'PUT',
         headers: {
@@ -195,13 +251,14 @@ export default function UserManagementPage() {
         },
         body: JSON.stringify(updateData)
       });
-
+  
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to update user');
+        console.error('Server response:', data);
+        throw new Error(data.message || data.error || 'Failed to update user');
       }
-
+  
       // Update users list
       setUsers(users.map(user => user.id === selectedUser.id ? data : user));
       
@@ -421,3 +478,4 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
