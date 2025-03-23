@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { requirePermission } from '@/middleware/roleCheck';
+import { isSystemAdmin } from '@/lib/auth';
 
 // Get all users
 export async function GET(request: NextRequest) {
@@ -17,11 +18,23 @@ export async function GET(request: NextRequest) {
         id: true,
         username: true,
         email: true,
-        is_admin: true,
         entityMembers: {
           include: {
-            entity: true,
-            entityRole: true,
+            entity: {
+              include: {
+                entityType: true,
+              },
+            },
+            entityRole: {
+              include: {
+                entityRolePermissions: {
+                  include: {
+                    permission: true,
+                    resource: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -55,14 +68,12 @@ export async function POST(request: NextRequest) {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     
-    // Create the user without setting role_id
+    // Create the user
     const user = await prisma.users.create({
       data: {
         username,
         email,
         password_hash: hashedPassword,
-        // Remove this line as it's causing the foreign key constraint error
-        // role_id: entity_role_id,
       },
     });
     
@@ -81,12 +92,28 @@ export async function POST(request: NextRequest) {
       include: {
         entityMembers: {
           include: {
-            entity: true,
-            entityRole: true,
+            entity: {
+              include: {
+                entityType: true,
+              },
+            },
+            entityRole: {
+              include: {
+                entityRolePermissions: {
+                  include: {
+                    permission: true,
+                    resource: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
     });
+
+    // Check if the user is a System Admin
+    const isAdmin = await isSystemAdmin(user.id);
     
     return NextResponse.json(completeUser, { status: 201 });
   } catch (error) {
@@ -183,17 +210,38 @@ export async function PUT(request: NextRequest) {
       }
 
       // Return user with relationships
-      return tx.users.findUnique({
+      const updatedUser = await tx.users.findUnique({
         where: { id },
         include: {
           entityMembers: {
             include: {
-              entity: true,
-              entityRole: true,
+              entity: {
+                include: {
+                  entityType: true,
+                },
+              },
+              entityRole: {
+                include: {
+                  entityRolePermissions: {
+                    include: {
+                      permission: true,
+                      resource: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },
       });
+
+      // Check if the user is a System Admin
+      const isAdmin = await isSystemAdmin(id);
+
+      return {
+        ...updatedUser,
+        isSystemAdmin: isAdmin,
+      };
     });
 
     if (!updatedUser) {

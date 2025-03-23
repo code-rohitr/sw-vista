@@ -4,6 +4,27 @@ import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
 
 /**
+ * Checks if a user has the System Admin role
+ * @param userId The user ID to check
+ * @returns True if the user has the System Admin role, false otherwise
+ */
+export async function isSystemAdmin(userId: number): Promise<boolean> {
+  const systemMembership = await prisma.entityMembers.findFirst({
+    where: {
+      user_id: userId,
+      entity: {
+        name: 'System',
+      },
+      entityRole: {
+        name: 'System Admin',
+      },
+    },
+  });
+  
+  return !!systemMembership;
+}
+
+/**
  * Verifies user credentials and returns the user if valid
  * @param username The username to verify
  * @param password The password to verify
@@ -13,9 +34,6 @@ export async function verifyCredentials(username: string, password: string) {
   // Find user by username
   const user = await prisma.users.findFirst({
     where: { username },
-    include: {
-      role: true, // Include the role information
-    },
   });
   
   if (!user) {
@@ -29,9 +47,25 @@ export async function verifyCredentials(username: string, password: string) {
     return null;
   }
   
+  // Check if user is System Admin
+  const isAdmin = await isSystemAdmin(user.id);
+
+  // Get entity memberships
+  const entityMembers = await prisma.entityMembers.findMany({
+    where: { user_id: user.id },
+    include: {
+      entity: true,
+      entityRole: true,
+    },
+  });
+
   // Return user without password
   const { password_hash, ...userWithoutPassword } = user;
-  return userWithoutPassword;
+  return {
+    ...userWithoutPassword,
+    isSystemAdmin: isAdmin,
+    entityMembers,
+  };
 }
 
 /**
@@ -42,35 +76,31 @@ export async function verifyCredentials(username: string, password: string) {
 export async function getUserById(id: number) {
   const user = await prisma.users.findUnique({
     where: { id },
-    include: {
-      role: true, // Include the role information
-    },
   });
   
   if (!user) {
     return null;
   }
   
-  // Return user without password
-  const { password_hash, ...userWithoutPassword } = user;
-  return userWithoutPassword;
-}
+  // Check if user is System Admin
+  const isAdmin = await isSystemAdmin(user.id);
 
-/**
- * Gets all permissions for a role
- * @param roleId The role ID
- * @returns Array of permission objects with resource information
- */
-export async function getRolePermissions(roleId: number) {
-  const rolePermissions = await prisma.rolePermissions.findMany({
-    where: { role_id: roleId },
+  // Get entity memberships
+  const entityMembers = await prisma.entityMembers.findMany({
+    where: { user_id: user.id },
     include: {
-      permission: true,
-      resource: true,
+      entity: true,
+      entityRole: true,
     },
   });
   
-  return rolePermissions;
+  // Return user without password
+  const { password_hash, ...userWithoutPassword } = user;
+  return {
+    ...userWithoutPassword,
+    isSystemAdmin: isAdmin,
+    entityMembers,
+  };
 }
 
 /**
@@ -125,29 +155,12 @@ export async function checkPermission(
   resourcePath: string,
   entityId?: number
 ): Promise<boolean> {
-  // Get the user
-  const user = await prisma.users.findUnique({
-    where: { id: userId },
-  });
-  
-  if (!user) {
-    return false;
-  }
-  
-  // Get the user's role
-  const role = await prisma.roles.findUnique({
-    where: { id: user.role_id },
-  });
-  
-  if (!role) {
-    return false;
-  }
-  
-  // If user has godmode role, allow all actions
-  if (role.name === 'godmode') {
+  // First check if user is a System Admin
+  const isAdmin = await isSystemAdmin(userId);
+  if (isAdmin) {
     return true;
   }
-  
+
   // Get the resource by path
   const resource = await prisma.resources.findFirst({
     where: { path: resourcePath },
@@ -156,29 +169,8 @@ export async function checkPermission(
   if (!resource) {
     return false;
   }
-  
-  // Check role permissions
-  const rolePermissions = await prisma.rolePermissions.findMany({
-    where: {
-      role_id: user.role_id,
-      resource_id: resource.id,
-      permission: {
-        OR: [
-          { name: action },
-          { name: 'manage' }, // 'manage' permission includes all actions
-        ],
-      },
-    },
-    include: {
-      permission: true,
-    },
-  });
-  
-  if (rolePermissions.length > 0) {
-    return true;
-  }
-  
-  // If entityId is provided, check entity-specific permissions
+
+  // Check entity-specific permissions
   if (entityId) {
     // Get user's membership in the entity
     const entityMembership = await prisma.entityMembers.findFirst({
@@ -214,6 +206,7 @@ export async function checkPermission(
       }
     }
   }
+
   
   return false;
 }
@@ -246,80 +239,34 @@ export const generateToken = (payload: any): string => {
 };
 
 /**
- * Gets all permissions for a user, including role permissions and entity role permissions
+ * Gets all permissions for a user
  * @param userId The user ID
- * @returns Object with role permissions and entity permissions
+ * @returns Object with system roles and entity permissions
  */
 export async function getAllUserPermissions(userId: number) {
-  // Get the user
-  const user = await prisma.users.findUnique({
-    where: { id: userId },
-  });
-  
-  if (!user) {
-    return { rolePermissions: [], entityPermissions: [] };
-  }
-  
-  // Get the user's role
-  const role = await prisma.roles.findUnique({
-    where: { id: user.role_id },
-  });
-  
-  if (!role) {
-    return { rolePermissions: [], entityPermissions: [] };
-  }
-  
-  // Get role permissions
-  const rolePermissions = await prisma.rolePermissions.findMany({
-    where: {
-      role_id: user.role_id,
-    },
-    include: {
-      permission: true,
-      resource: true,
-    },
-  });
-  
-  // Get entity memberships
+  // Get all entity memberships
   const entityMemberships = await prisma.entityMembers.findMany({
-    where: {
-      user_id: userId,
-    },
+    where: { user_id: userId },
     include: {
       entity: {
         include: {
           entityType: true,
         },
       },
-      entityRole: true,
+      entityRole: {
+        include: {
+          entityRolePermissions: {
+            include: {
+              permission: true,
+              resource: true,
+            },
+          },
+        },
+      },
     },
   });
-  
-  // Get entity permissions for each membership
-  const entityPermissionsPromises = entityMemberships.map(async (membership) => {
-    const permissions = await prisma.entityRolePermissions.findMany({
-      where: {
-        entity_role_id: membership.entity_role_id,
-      },
-      include: {
-        permission: true,
-        resource: true,
-      },
-    });
-    
-    return {
-      entity: membership.entity,
-      entityRole: membership.entityRole,
-      permissions,
-    };
-  });
-  
-  const entityPermissions = await Promise.all(entityPermissionsPromises);
-  
-  return {
-    rolePermissions,
-    entityPermissions,
-  };
+
+  return { entityMemberships };
 }
 
 // Verify authentication from request
@@ -340,13 +287,32 @@ export async function verifyAuth(request: NextRequest) {
     const secret = process.env.JWT_SECRET || 'your-secret-key';
     const decoded = jwt.verify(token, secret) as { id: number };
 
-    // Get user from database
+    // Get user from database with system roles
     const user = await prisma.users.findUnique({
       where: { id: decoded.id },
-      include: { role: true }
     });
 
-    return user;
+    if (!user) {
+      return null;
+    }
+
+    // Check if user is System Admin and get entity memberships
+    const [isAdmin, entityMembers] = await Promise.all([
+      isSystemAdmin(user.id),
+      prisma.entityMembers.findMany({
+        where: { user_id: user.id },
+        include: {
+          entity: true,
+          entityRole: true,
+        },
+      }),
+    ]);
+
+    return {
+      ...user,
+      isSystemAdmin: isAdmin,
+      entityMembers,
+    };
   } catch (error) {
     console.error('Auth verification error:', error);
     return null;

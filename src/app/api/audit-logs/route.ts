@@ -12,10 +12,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
     
-    const decoded = await verifyToken(token);
-    console.log(decoded)
-    if (!decoded || decoded.role_name !== 'godmode') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    const user = await verifyToken(token);
+    if (!user || !user.isSystemAdmin) {
+      return NextResponse.json({ message: 'Only System Admins can view audit logs' }, { status: 403 });
     }
 
     // Get query parameters for filtering
@@ -91,9 +90,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
     
-    const decoded = await verifyToken(token);
-    if (!decoded) {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    const user = await verifyToken(token);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await request.json();
@@ -101,7 +100,7 @@ export async function POST(request: NextRequest) {
     // Create audit log entry
     const log = await prisma.auditLogs.create({
       data: {
-        user_id: body.userId || decoded.id,
+        user_id: body.userId || user.id,
         entity_type: body.entityType,
         entity_id: body.entityId,
         action: body.action,

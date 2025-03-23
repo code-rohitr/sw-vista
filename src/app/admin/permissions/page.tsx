@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 export default function PermissionsManagementPage() {
   const [permissions, setPermissions] = useState<any[]>([]);
   const [resources, setResources] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [entityRoles, setEntityRoles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
@@ -24,7 +24,6 @@ export default function PermissionsManagementPage() {
   
   const { toast } = useToast();
 
-  // Fetch permissions, resources, and roles on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -53,41 +52,41 @@ export default function PermissionsManagementPage() {
         const resourcesData = await resourcesResponse.json();
         setResources(resourcesData);
 
-        // Fetch roles
-        const rolesResponse = await fetch('/api/roles', {
+        // Fetch entity roles
+        const entityRolesResponse = await fetch('/api/entity-roles', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
         
-        if (!rolesResponse.ok) throw new Error('Failed to fetch roles');
-        const rolesData = await rolesResponse.json();
+        if (!entityRolesResponse.ok) throw new Error('Failed to fetch entity roles');
+        const entityRolesData = await entityRolesResponse.json();
         
-        // Fetch role permissions for each role
+        // Get permissions for each entity role
         const rolesWithPermissions = await Promise.all(
-          rolesData.map(async (role: any) => {
-            const permissionsResponse = await fetch(`/api/roles/${role.id}/permissions`, {
+          entityRolesData.map(async (role: any) => {
+            const rolePermissionsResponse = await fetch(`/api/entity-role-permissions?entityRoleId=${role.id}`, {
               headers: {
                 'Authorization': `Bearer ${token}`
               }
             });
             
-            if (permissionsResponse.ok) {
-              const permissionsData = await permissionsResponse.json();
+            if (rolePermissionsResponse.ok) {
+              const permissionsData = await rolePermissionsResponse.json();
               return {
                 ...role,
-                rolePermissions: permissionsData
+                entityRolePermissions: permissionsData
               };
             }
             
             return {
               ...role,
-              rolePermissions: []
+              entityRolePermissions: []
             };
           })
         );
         
-        setRoles(rolesWithPermissions);
+        setEntityRoles(rolesWithPermissions);
       } catch (error) {
         toast({
           title: 'Error',
@@ -158,18 +157,18 @@ export default function PermissionsManagementPage() {
     }
   };
 
-  // Count how many roles use a specific permission
+  // Count how many entity roles use a specific permission
   const getPermissionUsageCount = (permissionId: number) => {
-    return roles.reduce((count, role) => {
-      const hasPermission = role.rolePermissions.some((rp: any) => rp.permission_id === permissionId);
+    return entityRoles.reduce((count, role) => {
+      const hasPermission = role.entityRolePermissions.some((rp: any) => rp.permission_id === permissionId);
       return hasPermission ? count + 1 : count;
     }, 0);
   };
 
-  // Get roles that use a specific permission
-  const getRolesUsingPermission = (permissionId: number) => {
-    return roles.filter(role => 
-      role.rolePermissions.some((rp: any) => rp.permission_id === permissionId)
+  // Get entity roles that use a specific permission
+  const getEntityRolesUsingPermission = (permissionId: number) => {
+    return entityRoles.filter(role => 
+      role.entityRolePermissions.some((rp: any) => rp.permission_id === permissionId)
     );
   };
 
@@ -184,13 +183,13 @@ export default function PermissionsManagementPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Permissions Management</h2>
-        <Button onClick={handleOpenDialog}>Create New Permission</Button>
+        <h2 className="text-2xl font-bold">Permission Types</h2>
+        <Button onClick={handleOpenDialog}>Create New Permission Type</Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>All Permissions</CardTitle>
+          <CardTitle>All Permission Types</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -200,7 +199,7 @@ export default function PermissionsManagementPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Action</TableHead>
-                <TableHead>Used By</TableHead>
+                <TableHead>Used By Entity Roles</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -212,10 +211,11 @@ export default function PermissionsManagementPage() {
                   <TableCell>{permission.action}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {getRolesUsingPermission(permission.id).map(role => (
+                      {getEntityRolesUsingPermission(permission.id).map(role => (
                         <span 
                           key={role.id} 
                           className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs"
+                          title={`${role.entity?.name || 'System'}`}
                         >
                           {role.name}
                         </span>
@@ -234,25 +234,27 @@ export default function PermissionsManagementPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Roles and Their Permissions</CardTitle>
+          <CardTitle>Entity Roles and Their Permissions</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Role Name</TableHead>
+                <TableHead>Entity Role</TableHead>
+                <TableHead>Entity</TableHead>
                 <TableHead>Permissions Count</TableHead>
                 <TableHead>Permissions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {roles.map((role) => (
+              {entityRoles.map((role) => (
                 <TableRow key={role.id}>
                   <TableCell>{role.name}</TableCell>
-                  <TableCell>{role.rolePermissions ? role.rolePermissions.length : 0}</TableCell>
+                  <TableCell>{role.entity?.name || 'System'}</TableCell>
+                  <TableCell>{role.entityRolePermissions ? role.entityRolePermissions.length : 0}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {role.rolePermissions && role.rolePermissions.map((rp: any) => (
+                      {role.entityRolePermissions && role.entityRolePermissions.map((rp: any) => (
                         <span 
                           key={rp.id} 
                           className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs"
@@ -273,9 +275,9 @@ export default function PermissionsManagementPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Permission</DialogTitle>
+            <DialogTitle>Create New Permission Type</DialogTitle>
             <DialogDescription>
-              Create a new permission that can be assigned to roles.
+              Create a new permission type that can be assigned to entity roles.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

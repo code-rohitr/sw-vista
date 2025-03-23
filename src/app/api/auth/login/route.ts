@@ -1,6 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyCredentials, generateToken, getRolePermissions } from '@/lib/auth';
+import { verifyCredentials, generateToken, isSystemAdmin } from '@/lib/auth';
+
+interface EntityRolePermission {
+  permission: {
+    name: string;
+  };
+  resource: {
+    name: string;
+  };
+}
+
+interface EntityRole {
+  id: number;
+  name: string;
+  entityRolePermissions: EntityRolePermission[];
+}
+
+interface Entity {
+  id: number;
+  name: string;
+  entityType: {
+    id: number;
+    name: string;
+  };
+}
+
+interface EntityMembership {
+  id: number;
+  entity: Entity;
+  entityRole: EntityRole;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,39 +40,44 @@ export async function POST(request: NextRequest) {
     const user = await verifyCredentials(username, password);
 
     if (!user) {
-      // We don't know which user failed, so we can't log it specifically
       return NextResponse.json(
         { message: 'Invalid username or password' },
         { status: 401 }
       );
     }
 
-    // Check if role_id exists before getting permissions
-    if (!user.role_id) {
-      return NextResponse.json(
-        { message: 'User has no assigned role' },
-        { status: 403 }
-      );
-    }
+    // Check if user is System Admin
+    const isAdmin = await isSystemAdmin(user.id);
 
-    // Check if role exists
-    if (!user.role) {
-      return NextResponse.json(
-        { message: 'User role information is missing' },
-        { status: 403 }
-      );
-    }
+    // Get all entity memberships
+    const entityMemberships = await prisma.entityMembers.findMany({
+      where: {
+        user_id: user.id,
+      },
+      include: {
+        entity: {
+          include: {
+            entityType: true,
+          },
+        },
+        entityRole: {
+          include: {
+            entityRolePermissions: {
+              include: {
+                permission: true,
+                resource: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
-    // Get the user's role permissions
-    const rolePermissions = await getRolePermissions(user.role_id);
-
-    console.log(rolePermissions)
-    // Generate JWT token with user ID, username, and role ID
+    // Generate JWT token with user info and admin status
     const token = generateToken({
       id: user.id,
       username: user.username,
-      role_id: user.role_id,
-      role_name: user.role.name,
+      isSystemAdmin: isAdmin,
     });
 
     // Log successful login
@@ -55,29 +90,49 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Extract basic permissions for the frontend
-    const basicPermissions = rolePermissions.reduce((acc, rp) => {
-      const resourceName = rp.resource.name;
-      const permissionName = rp.permission.name;
-      
-      if (!acc[resourceName]) {
-        acc[resourceName] = [];
-      }
-      
-      acc[resourceName].push(permissionName);
-      return acc;
-    }, {} as Record<string, string[]>);
+    // Extract permissions for the frontend
+    const permissions: Record<string, string[]> = {};
 
-    // Return user data, token, and basic permissions
+    // Add entity role permissions
+    entityMemberships.forEach((membership: EntityMembership) => {
+      membership.entityRole.entityRolePermissions.forEach((erp: EntityRolePermission) => {
+        const resourceName = erp.resource.name;
+        const permissionName = erp.permission.name;
+        
+        if (!permissions[resourceName]) {
+          permissions[resourceName] = [];
+        }
+        
+        if (!permissions[resourceName].includes(permissionName)) {
+          permissions[resourceName].push(permissionName);
+        }
+      });
+    });
+
+    // If user is System Admin, they have all permissions
+    if (isAdmin) {
+      const allResources = await prisma.resources.findMany();
+      const allPermissions = await prisma.permissions.findMany();
+      
+      allResources.forEach(resource => {
+        permissions[resource.name] = allPermissions.map(p => p.name);
+      });
+    }
+
+    // Return user data, token, and permissions
     return NextResponse.json({
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role.name,
-        role_id: user.role_id,
+        isSystemAdmin: isAdmin,
+        entityMembers: entityMemberships.map((em: EntityMembership) => ({
+          id: em.id,
+          entity: em.entity,
+          entityRole: em.entityRole,
+        })),
       },
-      permissions: basicPermissions,
+      permissions,
       token,
     });
   } catch (error) {

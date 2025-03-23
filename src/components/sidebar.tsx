@@ -2,20 +2,14 @@
 
 import { motion } from "framer-motion"
 import Link from "next/link"
-import { FaThLarge, FaMapMarkerAlt, FaFileAlt, FaCalendarCheck, FaFileInvoiceDollar } from "react-icons/fa"
+import { FaThLarge, FaFileAlt, FaUsers } from "react-icons/fa"
 import { Switch } from "@/components/ui/switch"
 
-interface SidebarProps {
-  clubName?: string
-}
-
-export function Sidebar({ clubName = "Sample Club Name" }: SidebarProps) {
+export function Sidebar() {
   const menuItems = [
-    { icon: <FaThLarge size={18} />, label: "Dashboard", description: "Club Insights and Event Details.", href: "/dashboard" },
-    { icon: <FaMapMarkerAlt size={18} />, label: "Venues", description: "Explore and Choose the Perfect Venue.", href: "/venues" },
-    { icon: <FaFileAlt size={18} />, label: "Proposal", description: "Create and submit a proposal for your event.", href: "/proposal" },
-    { icon: <FaCalendarCheck size={18} />, label: "Book Venue", description: "Book and application to book your venue", href: "/book-venue" },
-    { icon: <FaFileInvoiceDollar size={18} />, label: "Submit Reports (Outstation)", description: "Explore and Choose the Perfect Venue", href: "/reports" },
+    { icon: <FaThLarge size={18} />, label: "Dashboard", description: "System Overview and Insights", href: "/dashboard" },
+    { icon: <FaUsers size={18} />, label: "Entities", description: "Manage Your Entities", href: "/entities" },
+    { icon: <FaFileAlt size={18} />, label: "Reports", description: "View and Generate Reports", href: "/reports" },
   ]
 
   return (
@@ -29,12 +23,12 @@ export function Sidebar({ clubName = "Sample Club Name" }: SidebarProps) {
         {/* Header */}
         <div className="space-y-2">
           <h1 className="text-2xl font-bold text-center">SW VISTA</h1>
-          <p className="text-sm text-gray-800 text-center leading-tight">Student Welfare Venue Information and Scheduling Tool for Academics</p>
+          <p className="text-sm text-gray-800 text-center leading-tight">System-Wide Identity and Service Tool for Administration</p>
         </div>
 
-        {/* Club Name & Theme Toggle */}
+        {/* System Name & Theme Toggle */}
         <div className="space-y-4">
-          <p className="text-md text-center font-bold">{clubName}</p>
+          <p className="text-md text-center font-bold">SW-Vista</p>
           <div className="flex items-center justify-between">
             <span className="text-sm">Dark Theme</span>
             <Switch />

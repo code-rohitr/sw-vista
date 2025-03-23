@@ -7,7 +7,6 @@ export async function GET(request: NextRequest) {
   try {
     // Verify authentication
     const user = await verifyAuth(request);
-    console.log(user,"user")
     if (!user) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
@@ -36,10 +35,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has godmode role
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
       return NextResponse.json(
-        { message: 'Only godmode users can create entity types' },
+        { message: 'Only System Admins can create entity types' },
         { status: 403 }
       );
     }

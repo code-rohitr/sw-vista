@@ -36,7 +36,13 @@ export async function GET(
             id: true,
             username: true,
             email: true,
-            role: true
+            created_at: true,
+            entityMembers: {
+              include: {
+                entity: true,
+                entityRole: true
+              }
+            }
           }
         },
         entityRole: true
@@ -95,8 +101,8 @@ export async function PUT(
       );
     }
 
-    // Check if user has godmode role or is an admin of the entity
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin or an admin of the entity
+    if (!user.isSystemAdmin) {
       // Check if user is an admin of the entity
       const isEntityAdmin = await prisma.entityMembers.findFirst({
         where: {
@@ -110,7 +116,7 @@ export async function PUT(
       
       if (!isEntityAdmin) {
         return NextResponse.json(
-          { message: 'Only godmode users or entity admins can update entity members' },
+          { message: 'Only System Admins or entity admins can update entity members' },
           { status: 403 }
         );
       }
@@ -206,8 +212,8 @@ export async function DELETE(
       );
     }
 
-    // Check if user has godmode role or is an admin of the entity
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin or an admin of the entity
+    if (!user.isSystemAdmin) {
       // Check if user is an admin of the entity
       const isEntityAdmin = await prisma.entityMembers.findFirst({
         where: {
@@ -221,7 +227,7 @@ export async function DELETE(
       
       if (!isEntityAdmin) {
         return NextResponse.json(
-          { message: 'Only godmode users or entity admins can delete entity members' },
+          { message: 'Only System Admins or entity admins can delete entity members' },
           { status: 403 }
         );
       }

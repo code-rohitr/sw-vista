@@ -35,10 +35,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has admin role
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
       return NextResponse.json(
-        { message: 'Only GOD can create entities' },
+        { message: 'Only System Admins can create entities' },
         { status: 403 }
       );
     }

@@ -16,49 +16,13 @@ model Users {
   username      String                  @unique
   email         String                  @unique
   password_hash String
-  role_id       Int?                    // Keep old role_id temporarily
-  is_admin      Boolean                 @default(false)  // For system-wide admin access
   created_at    DateTime                @default(now())
   
   // Relationships
-  role          Roles?                  @relation(fields: [role_id], references: [id])
-  feedbacks     EventFeedback[]
-  proposals     Proposals[]             @relation("UserProposals")
-  notifications CalendarNotifications[]
   auditLogs     AuditLogs[]
-  bookings      VenueBookings[]
   reports       Reports[]               @relation("ReporterReports")
   approvals     Approvals[]             @relation("ApproverApprovals")
   entityMembers EntityMembers[]
-  clubMembers   ClubMembers[]
-}
-
-model Roles {
-  id            Int               @id @default(autoincrement())
-  name          String            @unique
-  description   String?
-  is_system_role Boolean          @default(false)
-  created_at    DateTime          @default(now())
-  
-  // Relationships
-  users         Users[]
-  rolePermissions RolePermissions[]
-}
-
-model RolePermissions {
-  id            Int          @id @default(autoincrement())
-  role_id       Int
-  permission_id Int
-  resource_id   Int
-  created_at    DateTime     @default(now())
-  
-  // Relationships
-  role          Roles        @relation(fields: [role_id], references: [id], onDelete: Cascade)
-  permission    Permissions  @relation(fields: [permission_id], references: [id], onDelete: Cascade)
-  resource      Resources    @relation(fields: [resource_id], references: [id], onDelete: Cascade)
-  
-  // Unique constraint to prevent duplicates
-  @@unique([role_id, permission_id, resource_id])
 }
 
 model Permissions {
@@ -69,7 +33,6 @@ model Permissions {
   created_at    DateTime               @default(now())
   
   // Relationships
-  rolePermissions      RolePermissions[]
   entityRolePermissions EntityRolePermissions[]
 }
 
@@ -81,7 +44,6 @@ model Resources {
   created_at    DateTime               @default(now())
   
   // Relationships
-  rolePermissions      RolePermissions[]
   entityRolePermissions EntityRolePermissions[]
 }
 
@@ -166,88 +128,14 @@ model EntityRolePermissions {
   @@unique([entity_role_id, permission_id, resource_id])
 }
 
-// Remove this duplicate EntityMembers model
-// model EntityMembers {
-//   id              Int           @id @default(autoincrement())
-//   entity_id       Int
-//   user_id         Int
-//   entity_role_id  Int
-//   joined_at       DateTime      @default(now())
-//   
-//   // Relationships
-//   entity          Entities      @relation(fields: [entity_id], references: [id], onDelete: Cascade)
-//   user            Users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-//   entityRole      EntityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
-//   
-//   // Unique constraint to prevent duplicates
-//   @@unique([entity_id, user_id])
-// }
-
-// Existing Project Models
-
-model Venues {
-  id          Int              @id @default(autoincrement())
-  name        String
-  location    String
-  capacity    Int
-  description String
-  image_url   String?
-  bookings    VenueBookings[]
-  catalogue   VenueCatalogue[]
-  reports     Reports[]
-}
-
-model VenueBookings {
-  id               Int           @id @default(autoincrement())
-  user_id          Int
-  venue_id         Int
-  event_name       String
-  event_description String
-  event_date       DateTime
-  status           String
-  created_at       DateTime      @default(now())
-  user             Users         @relation(fields: [user_id], references: [id])
-  venue            Venues        @relation(fields: [venue_id], references: [id])
-  eventHistory     EventHistory[]
-  reports          Reports[]
-  eventFeedback    EventFeedback[]
-}
-
-model EventFeedback {
-  id         Int           @id @default(autoincrement())
-  event_id   Int
-  user_id    Int
-  rating     Int
-  comments   String
-  created_at DateTime      @default(now())
-  event      VenueBookings @relation(fields: [event_id], references: [id])
-  user       Users         @relation(fields: [user_id], references: [id])
-}
-
-model Proposals {
-  id             Int      @id @default(autoincrement())
-  proposer_id    Int
-  title          String
-  description    String
-  event_type     String
-  requested_date DateTime
-  status         String
-  created_at     DateTime @default(now())
-  proposer       Users    @relation("UserProposals", fields: [proposer_id], references: [id])
-}
-
 model Reports {
   id          Int           @id @default(autoincrement())
   reporter_id Int
   report_type String
   content     String
-  event_id    Int?
   status      String
   created_at  DateTime      @default(now())
   reporter    Users         @relation("ReporterReports", fields: [reporter_id], references: [id])
-  event       VenueBookings? @relation(fields: [event_id], references: [id])
-  venue       Venues?       @relation(fields: [venue_id], references: [id])
-  venue_id    Int?
   approvals   Approvals[]
 }
 
@@ -263,41 +151,6 @@ model Approvals {
   report      Reports? @relation(fields: [entity_id], references: [id])
 }
 
-model CalendarNotifications {
-  id              Int      @id @default(autoincrement())
-  user_id         Int
-  event_id        Int
-  notification_type String
-  sent_at         DateTime
-  user            Users    @relation(fields: [user_id], references: [id])
-}
-
-model Clubs {
-  id          Int           @id @default(autoincrement())
-  name        String
-  description String
-  created_at  DateTime      @default(now())
-  members     ClubMembers[]
-}
-
-model ClubMembers {
-  id        Int      @id @default(autoincrement())
-  club_id   Int
-  user_id   Int
-  role      String
-  joined_at DateTime @default(now())
-  club      Clubs    @relation(fields: [club_id], references: [id])
-  user      Users    @relation(fields: [user_id], references: [id])
-}
-
-model VenueCatalogue {
-  id               Int     @id @default(autoincrement())
-  venue_id         Int
-  image_url        String?
-  additional_details String?
-  venue            Venues  @relation(fields: [venue_id], references: [id])
-}
-
 model AuditLogs {
   id          Int      @id @default(autoincrement())
   user_id     Int
@@ -306,13 +159,4 @@ model AuditLogs {
   action      String
   timestamp   DateTime @default(now())
   user        Users    @relation(fields: [user_id], references: [id])
-}
-
-model EventHistory {
-  id               Int           @id @default(autoincrement())
-  venue_booking_id Int
-  event_status     String
-  feedback         String?
-  created_at       DateTime      @default(now())
-  venueBooking     VenueBookings @relation(fields: [venue_booking_id], references: [id])
 }

@@ -30,8 +30,13 @@ interface User {
   id: number;
   username: string;
   email: string;
-  is_admin: boolean;
-  entityMembers?: {
+  isSystemAdmin: boolean;
+  systemRoles: {
+    id: number;
+    name: string;
+    entity: Entity;
+  }[];
+  entityMembers: {
     entity: Entity;
     entityRole: EntityRole;
     entity_id: number;
@@ -343,8 +348,8 @@ export default function UserManagementPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>Username</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Entity</TableHead>
-                <TableHead>Role</TableHead>
+                <TableHead>System Roles</TableHead>
+                <TableHead>Entity Memberships</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -355,10 +360,21 @@ export default function UserManagementPage() {
                   <TableCell>{user.username}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
-                    {user.entityMembers?.[0]?.entity?.name || 'No entity'}
+                    {user.isSystemAdmin ? (
+                      <span className="font-bold text-primary">System Admin</span>
+                    ) : user.systemRoles?.length > 0 ? (
+                      user.systemRoles.map(role => role.name).join(', ')
+                    ) : (
+                      'None'
+                    )}
                   </TableCell>
                   <TableCell>
-                    {user.entityMembers?.[0]?.entityRole?.name || 'No role'}
+                    {user.entityMembers?.map((membership, index) => (
+                      <div key={index}>
+                        {membership.entity.name} ({membership.entityRole.name})
+                        {index < user.entityMembers.length - 1 ? ', ' : ''}
+                      </div>
+                    )) || 'None'}
                   </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
@@ -478,4 +494,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-

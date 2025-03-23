@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -12,18 +13,14 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [user, setUser] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isLoading, logout, isSystemAdmin } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const router = useRouter();
   const { toast } = useToast();
 
   useEffect(() => {
     // Check if user is logged in
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('auth_token');
-
-    if (!storedUser || !token) {
+    if (!isLoading && !user) {
       toast({
         title: 'Access denied',
         description: 'You must be logged in to access this page',
@@ -31,17 +28,6 @@ export default function DashboardLayout({
       });
       router.push('/login');
       return;
-    }
-
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-    } catch (error) {
-      localStorage.removeItem('user');
-      localStorage.removeItem('auth_token');
-      router.push('/login');
-    } finally {
-      setIsLoading(false);
     }
 
     // Check for saved theme preference
@@ -57,11 +43,6 @@ export default function DashboardLayout({
     }
   }, [router, toast]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('auth_token');
-    router.push('/login');
-  };
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
@@ -100,7 +81,32 @@ export default function DashboardLayout({
                 Profile
               </Link>
             </li>
-            {user?.role === 'godmode' && (
+            {/* Entity Memberships */}
+            {user?.entityMembers && user.entityMembers.length > 0 && (
+              <li className="pt-4">
+                <h3 className="text-sm font-semibold text-black/70 dark:text-white/70 uppercase tracking-wider mb-2">
+                  Your Entities
+                </h3>
+                <ul className="space-y-1">
+                  {user.entityMembers.map((membership, index) => (
+                    <li key={index}>
+                      <Link 
+                        href={`/entities/${membership.entity.id}`} 
+                        className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white"
+                      >
+                        {membership.entity.name}
+                        <span className="text-sm text-black/50 dark:text-white/50 block">
+                          {membership.entityRole.name}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            )}
+            
+            {/* System Admin Link */}
+            {isSystemAdmin() && (
               <li>
                 <Link href="/admin" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
                   Admin Panel
@@ -110,7 +116,7 @@ export default function DashboardLayout({
           </ul>
         </nav>
         <div className="p-4 border-t border-black dark:border-white">
-          <Button variant="outline" className="w-full" onClick={handleLogout}>
+          <Button variant="outline" className="w-full" onClick={logout}>
             Sign Out
           </Button>
         </div>

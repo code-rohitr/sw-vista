@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, checkPermission } from '@/lib/auth';
+import { verifyToken, checkPermission, isSystemAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 // Define return types for the middleware
@@ -8,70 +8,7 @@ type AuthResult =
   | NextResponse<{ message: string }>;
 
 /**
- * Middleware to require a specific role
- * @param roleName The role name required to access the resource
- * @returns Middleware function that checks if the user has the required role
- */
-export function requireRole(roleName: string) {
-  return async (request: NextRequest): Promise<AuthResult> => {
-    try {
-      // Get token from header
-      const authHeader = request.headers.get('authorization');
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json(
-          { message: 'Unauthorized' },
-          { status: 401 }
-        );
-      }
-      
-      const token = authHeader.split(' ')[1];
-      
-      // Verify token
-      const decoded = await verifyToken(token);
-      if (!decoded) {
-        return NextResponse.json(
-          { message: 'Unauthorized: Invalid token' },
-          { status: 401 }
-        );
-      }
-      
-      // Get user with role
-      const user = await prisma.users.findUnique({
-        where: { id: decoded.id },
-        include: {
-          role: true,
-        },
-      });
-      
-      if (!user) {
-        return NextResponse.json(
-          { message: 'Unauthorized: User not found' },
-          { status: 401 }
-        );
-      }
-      
-      // Check if user has the required role
-      if (user.role.name !== roleName && user.role.name !== 'godmode') {
-        return NextResponse.json(
-          { message: 'Forbidden: Insufficient permissions' },
-          { status: 403 }
-        );
-      }
-      
-      // Add user info to request
-      return { isAuthorized: true, user };
-    } catch (error) {
-      console.error('Authentication error:', error);
-      return NextResponse.json(
-        { message: 'Unauthorized: Invalid token' },
-        { status: 401 }
-      );
-    }
-  };
-}
-
-/**
- * Middleware to require a specific permission on a resource
+ * Middleware to require a specific entity role permission on a resource
  * @param action The action required (view, create, update, delete, manage)
  * @param resourcePath The resource path to check permissions for
  * @param entityIdParam Optional parameter name to extract entity ID from request
@@ -144,13 +81,13 @@ export function requirePermission(action: string, resourcePath: string, entityId
         );
       }
       
-      // Get user with role for request context
+      // Get user with system roles for request context
       const user = await prisma.users.findUnique({
         where: { id: decoded.id },
-        include: {
-          role: true,
-        },
       });
+
+      // Check if user is System Admin
+      const isAdmin = await isSystemAdmin(user?.id || 0);
       
       if (!user) {
         return NextResponse.json(
@@ -159,8 +96,14 @@ export function requirePermission(action: string, resourcePath: string, entityId
         );
       }
       
-      // Add user info to request
-      return { isAuthorized: true, user };
+      // Add user info with System Admin status to request
+      return {
+        isAuthorized: true,
+        user: user ? {
+          ...user,
+          isSystemAdmin: isAdmin,
+        } : null,
+      };
     } catch (error) {
       console.error('Authentication error:', error);
       return NextResponse.json(
@@ -172,7 +115,7 @@ export function requirePermission(action: string, resourcePath: string, entityId
 }
 
 /**
- * Middleware to require entity membership with a specific role
+ * Middleware to require membership in an entity with a specific role
  * @param entityIdParam Parameter name to extract entity ID from request
  * @param roleName Optional role name required within the entity
  * @returns Middleware function that checks if the user is a member of the entity with the required role
@@ -200,12 +143,9 @@ export function requireEntityMembership(entityIdParam: string, roleName?: string
         );
       }
       
-      // Get user with role
+      // Get user and check if they're a System Admin
       const user = await prisma.users.findUnique({
         where: { id: decoded.id },
-        include: {
-          role: true,
-        },
       });
       
       if (!user) {
@@ -215,8 +155,9 @@ export function requireEntityMembership(entityIdParam: string, roleName?: string
         );
       }
       
-      // If user has godmode role, allow access
-      if (user.role.name === 'godmode') {
+      // If user is System Admin, allow access
+      const isAdmin = await isSystemAdmin(user.id);
+      if (isAdmin) {
         return { isAuthorized: true, user };
       }
       

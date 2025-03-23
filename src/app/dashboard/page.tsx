@@ -1,13 +1,50 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Entities, EntityRoles, Permissions, Resources } from '@prisma/client';
+
+interface SystemRole {
+  id: number;
+  name: string;
+  entity: Entities;
+  entityRole: {
+    id: number;
+    name: string;
+    entityRolePermissions: {
+      permission: Permissions;
+      resource: Resources;
+    }[];
+  };
+}
+
+interface EntityMembership {
+  entity: Entities;
+  entityRole: {
+    id: number;
+    name: string;
+    entityRolePermissions: {
+      permission: Permissions;
+      resource: Resources;
+    }[];
+  };
+}
+
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  created_at: string;
+  isSystemAdmin: boolean;
+  systemRoles: SystemRole[];
+  entityMembers: EntityMembership[];
+}
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function UserDashboardPage() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
@@ -31,8 +68,8 @@ export default function UserDashboardPage() {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
       
-      // If user is godmode, redirect to admin dashboard
-      if (parsedUser.role === 'godmode') {
+      // If user is System Admin, redirect to admin dashboard
+      if (parsedUser.isSystemAdmin) {
         router.push('/admin/dashboard');
       }
     } catch (error) {
@@ -66,7 +103,9 @@ export default function UserDashboardPage() {
           <div className="flex items-center space-x-4">
             <div className="text-sm">
               <div className="font-medium">{user?.username}</div>
-              <div className="text-gray-500">{user?.role}</div>
+              <div className="text-gray-500">
+                {user?.isSystemAdmin ? 'System Admin' : user?.systemRoles?.map(role => role.name).join(', ')}
+              </div>
             </div>
             <Button variant="outline" size="sm" onClick={handleLogout}>
               Sign Out
@@ -96,12 +135,31 @@ export default function UserDashboardPage() {
                     <span>{user?.email}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="font-medium">Role:</span>
-                    <span className="capitalize">{user?.role}</span>
+                    <span className="font-medium">System Roles:</span>
+                    <span>
+                      {user?.isSystemAdmin ? (
+                        <span className="text-primary font-bold">System Admin</span>
+                      ) : user?.systemRoles && user.systemRoles.length > 0 ? (
+                        user.systemRoles.map(role => role.name).join(', ')
+                      ) : (
+                        'None'
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Entity Memberships:</span>
+                    <span>
+                      {user?.entityMembers?.map((membership, index) => (
+                        <span key={index}>
+                          {membership.entity.name} ({membership.entityRole.name})
+                          {index < user.entityMembers.length - 1 ? ', ' : ''}
+                        </span>
+                      )) || 'None'}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="font-medium">Account Created:</span>
-                    <span>{new Date(user?.created_at).toLocaleDateString()}</span>
+                    <span>{user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}</span>
                   </div>
                 </div>
               </CardContent>
@@ -113,17 +171,39 @@ export default function UserDashboardPage() {
                 <CardDescription>What you can do in the system</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {user?.role === 'editor' ? (
-                    <>
-                      <span className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 px-2 py-1 rounded text-xs">read</span>
-                      <span className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 px-2 py-1 rounded text-xs">write</span>
-                      <span className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 px-2 py-1 rounded text-xs">edit</span>
-                    </>
-                  ) : user?.role === 'viewer' ? (
-                    <span className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 px-2 py-1 rounded text-xs">read</span>
+                <div className="space-y-4">
+                  {user?.isSystemAdmin ? (
+                    <div>
+                      <div className="font-medium text-primary">System Admin</div>
+                      <div className="text-sm text-gray-500">Full system access with all permissions</div>
+                    </div>
                   ) : (
-                    <span className="text-gray-500">No specific permissions</span>
+                    <>
+                      {user?.systemRoles?.map((role, index) => (
+                        <div key={index}>
+                          <div className="font-medium">{role.name}</div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {role.entityRole.entityRolePermissions?.map((permission, pIndex) => (
+                              <span key={pIndex} className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 px-2 py-1 rounded text-xs">
+                                {permission.permission.name} {permission.resource.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {user?.entityMembers?.map((membership, index) => (
+                        <div key={index}>
+                          <div className="font-medium">{membership.entity.name} - {membership.entityRole.name}</div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {membership.entityRole.entityRolePermissions?.map((permission, pIndex) => (
+                              <span key={pIndex} className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 px-2 py-1 rounded text-xs">
+                                {permission.permission.name} {permission.resource.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   )}
                 </div>
               </CardContent>
@@ -136,30 +216,37 @@ export default function UserDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${user?.role !== 'editor' && 'opacity-50'}`}>
-                  <CardContent className="p-4 text-center">
-                    <div className="text-lg font-medium">Content Management</div>
-                    <div className="text-sm text-gray-500">
-                      {user?.role === 'editor' ? 'Full access' : 'View only'}
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-lg font-medium">Reports</div>
-                    <div className="text-sm text-gray-500">View reports</div>
-                  </CardContent>
-                </Card>
-                
-                <Card className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${user?.role !== 'editor' && 'opacity-50'}`}>
-                  <CardContent className="p-4 text-center">
-                    <div className="text-lg font-medium">Settings</div>
-                    <div className="text-sm text-gray-500">
-                      {user?.role === 'editor' ? 'Manage settings' : 'View only'}
-                    </div>
-                  </CardContent>
-                </Card>
+                {user?.isSystemAdmin ? (
+                  <>
+                    <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-medium">System Administration</div>
+                        <div className="text-sm text-gray-500">Full system access</div>
+                      </CardContent>
+                    </Card>
+                    <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-medium">User Management</div>
+                        <div className="text-sm text-gray-500">Manage all users</div>
+                      </CardContent>
+                    </Card>
+                    <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-medium">Entity Management</div>
+                        <div className="text-sm text-gray-500">Manage all entities</div>
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : (
+                  user?.entityMembers?.map((membership, index) => (
+                    <Card key={index} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-medium">{membership.entity.name}</div>
+                        <div className="text-sm text-gray-500">{membership.entityRole.name}</div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>

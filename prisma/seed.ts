@@ -35,10 +35,6 @@ async function main() {
     { name: 'entities', path: '/api/entities', description: 'Entity management' },
     { name: 'entity_roles', path: '/api/entity-roles', description: 'Entity role management' },
     { name: 'audit_logs', path: '/api/audit-logs', description: 'Audit logs' },
-    { name: 'venues', path: '/api/venues', description: 'Venue management' },
-    { name: 'venue_bookings', path: '/api/venue-bookings', description: 'Venue booking management' },
-    { name: 'clubs', path: '/api/clubs', description: 'Club management' },
-    { name: 'proposals', path: '/api/proposals', description: 'Proposal management' },
     { name: 'reports', path: '/api/reports', description: 'Report management' },
   ];
 
@@ -53,55 +49,55 @@ async function main() {
   );
   console.log('Default resources created');
 
-  // Create godmode entity type
-  const godmodeEntityType = await prisma.entityTypes.upsert({
-    where: { name: 'godmode' },
+  // Create System entity type
+  const systemEntityType = await prisma.entityTypes.upsert({
+    where: { name: 'System' },
     update: {},
     create: {
-      name: 'godmode',
-      description: 'Entity type for godmode users with full system access',
+      name: 'System',
+      description: 'System-wide administration',
     },
   });
-  console.log('Godmode entity type created');
+  console.log('System entity type created');
 
-  // Create godmode entity
-  let godmodeEntity = await prisma.entities.findFirst({
+  // Create System entity
+  let systemEntity = await prisma.entities.findFirst({
     where: {
-      name: 'godmode',
-      entity_type_id: godmodeEntityType.id,
+      name: 'System',
+      entity_type_id: systemEntityType.id,
     },
   });
 
-  if (!godmodeEntity) {
-    godmodeEntity = await prisma.entities.create({
+  if (!systemEntity) {
+    systemEntity = await prisma.entities.create({
       data: {
-        name: 'godmode',
-        description: 'Entity for godmode users with full system access',
-        entity_type_id: godmodeEntityType.id,
+        name: 'System',
+        description: 'System administration entity',
+        entity_type_id: systemEntityType.id,
       },
     });
   }
-  console.log('Godmode entity created');
+  console.log('System entity created');
 
-  // Create godmode role with all permissions
-  const godmodeRole = await prisma.entityRoles.upsert({
+  // Create System Admin role with all permissions
+  const systemAdminRole = await prisma.entityRoles.upsert({
     where: {
       name_entity_type_id: {
-        name: 'godmode',
-        entity_type_id: godmodeEntityType.id
+        name: 'System Admin',
+        entity_type_id: systemEntityType.id
       }
     },
     update: {
-      description: 'Role with full system access',
-      entity_id: godmodeEntity.id,
-      is_default: true,
+      description: 'Full system administration privileges',
+      entity_id: systemEntity.id,
+      is_default: false,
     },
     create: {
-      name: 'godmode',
-      description: 'Role with full system access',
-      entity_id: godmodeEntity.id,
-      entity_type_id: godmodeEntityType.id,
-      is_default: true,
+      name: 'System Admin',
+      description: 'Full system administration privileges',
+      entity_id: systemEntity.id,
+      entity_type_id: systemEntityType.id,
+      is_default: false,
     },
   });
 
@@ -113,90 +109,70 @@ async function main() {
       return prisma.entityRolePermissions.upsert({
         where: {
           entity_role_id_permission_id_resource_id: {
-            entity_role_id: godmodeRole.id,
+            entity_role_id: systemAdminRole.id,
             permission_id: managePermissionId,
             resource_id: resource.id,
           }
         },
         update: {}, // No updates needed if it exists
         create: {
-          entity_role_id: godmodeRole.id,
+          entity_role_id: systemAdminRole.id,
           permission_id: managePermissionId,
           resource_id: resource.id,
         },
       });
     })
   );
-  console.log('Godmode role and permissions created');
+  console.log('System Admin role and permissions created');
 
-  // Create godmode user
-  const password = 'godmode123'; // You should change this in production
+  // Create admin user
+  const password = 'admin123'; // You should change this in production
   const saltRounds = 10;
   const password_hash = await bcrypt.hash(password, saltRounds);
 
-  let godmodeUser = await prisma.users.findUnique({
-    where: { username: 'godmode' }
+  let adminUser = await prisma.users.findUnique({
+    where: { username: 'admin' }
   });
 
-  // Create a role in the roles table first
-  const systemRole = await prisma.roles.upsert({
-    where: { name: 'godmode' },
-    update: {
-      description: 'System administrator role with full access'
-    },
-    create: {
-      name: 'godmode',
-      description: 'System administrator role with full access'
-    }
-  });
-
-  if (!godmodeUser) {
-    godmodeUser = await prisma.users.create({
+  if (!adminUser) {
+    adminUser = await prisma.users.create({
       data: {
-        username: 'godmode',
-        email: 'godmode@system.com',
+        username: 'admin',
+        email: 'admin@system.com',
         password_hash,
-        is_admin: true,
-        role_id: systemRole.id, // Use the system role ID
       },
-    });
-  } else {
-    // Update the existing user to ensure it has the godmode role
-    godmodeUser = await prisma.users.update({
-      where: { id: godmodeUser.id },
-      data: { role_id: systemRole.id } // Use the system role ID
     });
   }
 
-  // Assign godmode user to godmode entity with godmode role
+  // Assign admin user to System entity with System Admin role
   const existingMember = await prisma.entityMembers.findFirst({
     where: {
-      entity_id: godmodeEntity.id,
-      user_id: godmodeUser.id,
+      entity_id: systemEntity.id,
+      user_id: adminUser.id,
     }
   });
 
   if (!existingMember) {
     await prisma.entityMembers.create({
       data: {
-        entity_id: godmodeEntity.id,
-        user_id: godmodeUser.id,
-        entity_role_id: godmodeRole.id,
+        entity_id: systemEntity.id,
+        user_id: adminUser.id,
+        entity_role_id: systemAdminRole.id,
       },
     });
   } else {
     await prisma.entityMembers.update({
       where: { id: existingMember.id },
-      data: { entity_role_id: godmodeRole.id }
+      data: { entity_role_id: systemAdminRole.id }
     });
   }
-  console.log('Godmode user created and assigned to godmode entity');
+  console.log('Admin user created and assigned as System Admin');
 
   // Create default entity types if they don't exist
   const defaultEntityTypes = [
-    { name: 'club', description: 'Club entity type' },
-    { name: 'security', description: 'Security entity type' },
-    { name: 'director', description: 'Director entity type' },
+    { name: 'department', description: 'Department entity type' },
+    { name: 'team', description: 'Team entity type' },
+    { name: 'project', description: 'Project entity type' },
   ];
 
   for (const entityType of defaultEntityTypes) {
@@ -209,9 +185,9 @@ async function main() {
   console.log('Default entity types created');
 
   console.log('Seed completed successfully');
-  console.log('Godmode user credentials:');
-  console.log('Username: godmode');
-  console.log('Password: godmode123');
+  console.log('Admin user credentials:');
+  console.log('Username: admin');
+  console.log('Password: admin123');
 }
 
 main()

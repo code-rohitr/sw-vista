@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function EntityRoleManagementPage() {
+  // Entity roles state
   const [entityRoles, setEntityRoles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -20,6 +21,9 @@ export default function EntityRoleManagementPage() {
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [permissions, setPermissions] = useState<any[]>([]);
+  const [resources, setResources] = useState<any[]>([]);
   
   const { toast } = useToast();
 
@@ -58,7 +62,7 @@ export default function EntityRoleManagementPage() {
   const [entityTypes, setEntityTypes] = useState<any[]>([]);
   const [entityTypeId, setEntityTypeId] = useState<number | ''>('');
   
-  // Update useEffect to fetch entity types
+  // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -66,27 +70,38 @@ export default function EntityRoleManagementPage() {
         const token = localStorage.getItem('auth_token');
         if (!token) throw new Error('Not authenticated');
   
-        // Fetch entity roles
-        const rolesResponse = await fetch('/api/entity-roles', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        // Fetch all required data in parallel
+        const [rolesRes, typesRes, permissionsRes, resourcesRes] = await Promise.all([
+          fetch('/api/entity-roles', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('/api/entity-types', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('/api/permissions', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('/api/resources', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+        ]);
         
-        if (!rolesResponse.ok) throw new Error('Failed to fetch entity roles');
-        const rolesData = await rolesResponse.json();
+        if (!rolesRes.ok) throw new Error('Failed to fetch entity roles');
+        if (!typesRes.ok) throw new Error('Failed to fetch entity types');
+        if (!permissionsRes.ok) throw new Error('Failed to fetch permissions');
+        if (!resourcesRes.ok) throw new Error('Failed to fetch resources');
+
+        const [rolesData, typesData, permissionsData, resourcesData] = await Promise.all([
+          rolesRes.json(),
+          typesRes.json(),
+          permissionsRes.json(),
+          resourcesRes.json()
+        ]);
+
         setEntityRoles(rolesData);
-  
-        // Fetch entity types
-        const typesResponse = await fetch('/api/entity-types', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!typesResponse.ok) throw new Error('Failed to fetch entity types');
-        const typesData = await typesResponse.json();
         setEntityTypes(typesData);
+        setPermissions(permissionsData);
+        setResources(resourcesData);
       } catch (error) {
         toast({
           title: 'Error',
@@ -101,11 +116,11 @@ export default function EntityRoleManagementPage() {
     fetchData();
   }, [toast]);
   
-  // Update resetForm to include entityTypeId
   const resetForm = () => {
     setName('');
     setDescription('');
     setEntityTypeId('');
+    setSelectedPermissions([]);
     setSelectedEntityRole(null);
     setIsEditMode(false);
   };
@@ -116,8 +131,7 @@ export default function EntityRoleManagementPage() {
     resetForm();
   };
   
-  // Update handleOpenDialog to set entityTypeId
-  const handleOpenDialog = (entityRole?: any) => {
+  const handleOpenDialog = async (entityRole?: any) => {
     resetForm();
     
     if (entityRole) {
@@ -125,13 +139,35 @@ export default function EntityRoleManagementPage() {
       setName(entityRole.name);
       setDescription(entityRole.description || '');
       setEntityTypeId(entityRole.entity_type_id);
+      
+      // Fetch role permissions
+      try {
+        const token = localStorage.getItem('auth_token');
+        if (!token) throw new Error('Not authenticated');
+
+        const response = await fetch(`/api/entity-role-permissions?entityRoleId=${entityRole.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error('Failed to fetch role permissions');
+        const data = await response.json();
+        
+        // Set selected permissions
+        setSelectedPermissions(data.map((rp: any) => rp.permission_id.toString()));
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to fetch role permissions',
+          variant: 'destructive',
+        });
+      }
+      
       setIsEditMode(true);
     }
     
     setIsDialogOpen(true);
   };
   
-  // Update handleCreateEntityRole to include entityTypeId
   const handleCreateEntityRole = async () => {
     try {
       if (!entityTypeId) {
@@ -147,7 +183,8 @@ export default function EntityRoleManagementPage() {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Not authenticated');
   
-      const response = await fetch('/api/entity-roles', {
+      // First create the entity role
+      const createRoleResponse = await fetch('/api/entity-roles', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -160,14 +197,34 @@ export default function EntityRoleManagementPage() {
         })
       });
   
-      const data = await response.json();
+      const roleData = await createRoleResponse.json();
       
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to create entity role');
+      if (!createRoleResponse.ok) {
+        throw new Error(roleData.message || 'Failed to create entity role');
+      }
+
+      // Then assign permissions
+      if (selectedPermissions.length > 0) {
+        const permissionPromises = selectedPermissions.map(permissionId => 
+          fetch('/api/entity-role-permissions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              entity_role_id: roleData.id,
+              permission_id: parseInt(permissionId),
+              resource_id: resources[0].id // TODO: Allow selecting resources per permission
+            })
+          })
+        );
+
+        await Promise.all(permissionPromises);
       }
   
-      // Update entity roles list
-      setEntityRoles([...entityRoles, data]);
+      // Update entity roles list with the new role data
+      setEntityRoles([...entityRoles, roleData]);
       
       toast({
         title: 'Success',
@@ -201,28 +258,56 @@ export default function EntityRoleManagementPage() {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Not authenticated');
   
-      const updateData: any = {};
-      if (name) updateData.name = name;
-      if (description !== undefined) updateData.description = description;
-      updateData.entity_type_id = entityTypeId;
-
-      const response = await fetch(`/api/entity-roles/${selectedEntityRole.id}`, {
+      // First update the entity role
+      const updateRoleResponse = await fetch(`/api/entity-roles/${selectedEntityRole.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(updateData)
+        body: JSON.stringify({
+          name,
+          description,
+          entity_type_id: entityTypeId
+        })
       });
 
-      const data = await response.json();
+      const roleData = await updateRoleResponse.json();
       
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to update entity role');
+      if (!updateRoleResponse.ok) {
+        throw new Error(roleData.message || 'Failed to update entity role');
+      }
+
+      // Delete existing permissions
+      await fetch(`/api/entity-role-permissions?entityRoleId=${selectedEntityRole.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      // Assign new permissions
+      if (selectedPermissions.length > 0) {
+        const permissionPromises = selectedPermissions.map(permissionId => 
+          fetch('/api/entity-role-permissions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              entity_role_id: selectedEntityRole.id,
+              permission_id: parseInt(permissionId),
+              resource_id: resources[0].id // TODO: Allow selecting resources per permission
+            })
+          })
+        );
+
+        await Promise.all(permissionPromises);
       }
 
       // Update entity roles list
-      setEntityRoles(entityRoles.map(role => role.id === selectedEntityRole.id ? data : role));
+      setEntityRoles(entityRoles.map(role => role.id === selectedEntityRole.id ? roleData : role));
       
       toast({
         title: 'Success',
@@ -301,13 +386,14 @@ export default function EntityRoleManagementPage() {
           {!isLoading && entityRoles.length > 0 && (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Entity Type</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Entity Type</TableHead>
+                <TableHead>Permissions</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
               </TableHeader>
               <TableBody>
                 {entityRoles.map((role) => (
@@ -316,6 +402,18 @@ export default function EntityRoleManagementPage() {
                     <TableCell>{role.name}</TableCell>
                     <TableCell>{role.description || 'N/A'}</TableCell>
                     <TableCell>{role.entityType?.name || 'N/A'}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {role.entityRolePermissions?.map((rp: any) => (
+                          <span 
+                            key={rp.id}
+                            className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs"
+                          >
+                            {rp.permission.name}
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
                         <Button 
@@ -396,6 +494,32 @@ export default function EntityRoleManagementPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label className="text-right mt-2">Permissions</Label>
+              <div className="col-span-3 space-y-2">
+                {permissions.map((permission) => (
+                  <div key={permission.id} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={`permission-${permission.id}`}
+                      checked={selectedPermissions.includes(permission.id.toString())}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedPermissions([...selectedPermissions, permission.id.toString()]);
+                        } else {
+                          setSelectedPermissions(selectedPermissions.filter(id => id !== permission.id.toString()));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`permission-${permission.id}`}>
+                      {permission.name}
+                      <span className="text-xs text-gray-500 ml-1">({permission.action})</span>
+                    </Label>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           

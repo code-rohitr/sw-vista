@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -12,67 +13,21 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [user, setUser] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isLoading, logout, isSystemAdmin } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Check if user is logged in
-        const storedUser = localStorage.getItem('user');
-        const token = localStorage.getItem('auth_token');
-
-        if (!storedUser || !token) {
-          toast({
-            title: 'Access denied',
-            description: 'You must be logged in to access this page',
-            variant: 'destructive',
-          });
-          router.push('/login');
-          return;
-        }
-
-        // Parse user data
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-
-        // For now, allow access to admin area without strict role checking
-        // This is temporary until we update the login flow to use the new role system
-        setIsLoading(false);
-
-        // In a production environment, you would verify the role properly:
-        /*
-        // Check if user has godmode role
-        if (!parsedUser.role || 
-            (typeof parsedUser.role === 'object' && parsedUser.role.name !== 'godmode') ||
-            (typeof parsedUser.role === 'string' && parsedUser.role !== 'godmode')) {
-          toast({
-            title: 'Access denied',
-            description: 'You do not have permission to access the admin area',
-            variant: 'destructive',
-          });
-          router.push('/dashboard');
-          return;
-        }
-        */
-      } catch (error) {
-        console.error('Auth error:', error);
-        localStorage.removeItem('user');
-        localStorage.removeItem('auth_token');
-        router.push('/login');
-      }
-    };
-
-    checkAuth();
-  }, [router, toast]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('auth_token');
-    router.push('/login');
-  };
+    // Check if user is logged in and is System Admin
+    if (!isLoading && (!user || !isSystemAdmin())) {
+      toast({
+        title: 'Access denied',
+        description: 'You must be a System Admin to access this page',
+        variant: 'destructive',
+      });
+      router.push('/dashboard');
+    }
+  }, [user, isLoading, isSystemAdmin, router, toast]);
 
   if (isLoading) {
     return (
@@ -89,7 +44,7 @@ export default function AdminLayout({
         <div className="p-4 border-b border-black dark:border-white">
           <h2 className="text-xl font-bold text-black dark:text-white">SW-Vista Admin</h2>
           <p className="text-sm text-black/70 dark:text-white/70">
-            {user?.username} ({typeof user?.role === 'object' ? user?.role?.name : user?.role || 'No role'})
+            {user?.username} (System Admin)
           </p>
         </div>
         <nav className="p-4">
@@ -122,18 +77,13 @@ export default function AdminLayout({
                 </Link>
               </li>
               <li>
-                <Link href="/admin/roles" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
-                  Roles
+                <Link href="/admin/resources" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
+                  Resources
                 </Link>
               </li>
               <li>
                 <Link href="/admin/permissions" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
-                  Permissions
-                </Link>
-              </li>
-              <li>
-                <Link href="/admin/resources" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
-                  Resources
+                  Permission Types
                 </Link>
               </li>
             </ul>
@@ -141,7 +91,7 @@ export default function AdminLayout({
           
           <div>
             <h3 className="text-sm font-semibold text-black/70 dark:text-white/70 uppercase tracking-wider mb-2">
-              Entity Management
+              Entities & Roles
             </h3>
             <ul className="space-y-1">
               <li>
@@ -163,7 +113,7 @@ export default function AdminLayout({
           </div>
         </nav>
         <div className="p-4 border-t border-black dark:border-white">
-          <Button variant="outline" className="w-full" onClick={handleLogout}>
+          <Button variant="outline" className="w-full" onClick={logout}>
             Sign Out
           </Button>
         </div>

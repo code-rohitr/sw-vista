@@ -18,7 +18,13 @@ export async function GET(request: NextRequest) {
     // Build query
     const query: any = {
       include: {
-        entityType: true
+        entityType: true,
+        entityRolePermissions: {
+          include: {
+            permission: true,
+            resource: true,
+          },
+        },
       },
       orderBy: { created_at: 'desc' }
     };
@@ -52,10 +58,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has godmode role
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
       return NextResponse.json(
-        { message: 'Only godmode users can create entity roles' },
+        { message: 'Only System Admins can create entity roles' },
         { status: 403 }
       );
     }
@@ -96,6 +102,15 @@ export async function POST(request: NextRequest) {
         name,
         description,
         entity_type_id
+      },
+      include: {
+        entityType: true,
+        entityRolePermissions: {
+          include: {
+            permission: true,
+            resource: true,
+          },
+        },
       }
     });
 

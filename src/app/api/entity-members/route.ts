@@ -29,7 +29,13 @@ export async function GET(request: NextRequest) {
             id: true,
             username: true,
             email: true,
-            role: true
+            isSystemAdmin: true,
+            systemRoles: {
+              include: {
+                entityRole: true,
+                entity: true
+              }
+            }
           }
         },
         entityRole: true
@@ -82,8 +88,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has godmode role or is an admin of the entity
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin or an admin of the entity
+    if (!user.isSystemAdmin) {
       // Check if user is an admin of the entity
       const isEntityAdmin = await prisma.entityMembers.findFirst({
         where: {
@@ -97,7 +103,7 @@ export async function POST(request: NextRequest) {
       
       if (!isEntityAdmin) {
         return NextResponse.json(
-          { message: 'Only godmode users or entity admins can manage entity members' },
+          { message: 'Only System Admins or entity admins can manage entity members' },
           { status: 403 }
         );
       }
@@ -234,8 +240,8 @@ export async function DELETE(request: NextRequest) {
     const entity_id = parseInt(entityId);
     const user_id = parseInt(userId);
 
-    // Check if user has godmode role or is an admin of the entity
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin or an admin of the entity
+    if (!user.isSystemAdmin) {
       // Check if user is an admin of the entity
       const isEntityAdmin = await prisma.entityMembers.findFirst({
         where: {
@@ -249,7 +255,7 @@ export async function DELETE(request: NextRequest) {
       
       if (!isEntityAdmin) {
         return NextResponse.json(
-          { message: 'Only godmode users or entity admins can remove entity members' },
+          { message: 'Only System Admins or entity admins can remove entity members' },
           { status: 403 }
         );
       }

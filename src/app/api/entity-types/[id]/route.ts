@@ -56,10 +56,10 @@ export async function PUT(
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has admin role
-    if (user.role?.name !== 'godmode') {
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
       return NextResponse.json(
-        { message: 'Only GOD can update entity types' },
+        { message: 'Only System Admins can update entity types' },
         { status: 403 }
       );
     }
@@ -118,10 +118,10 @@ export async function DELETE(
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has admin role
-    if (user.role?.name !== 'admin') {
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
       return NextResponse.json(
-        { message: 'Only admins can delete entity types' },
+        { message: 'Only System Admins can delete entity types' },
         { status: 403 }
       );
     }
