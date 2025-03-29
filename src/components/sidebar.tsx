@@ -5,6 +5,7 @@ import Link from "next/link"
 import { FaThLarge, FaUsers, FaUserShield, FaKey, FaLock, FaHistory, FaServer } from "react-icons/fa"
 import { Switch } from "@/components/ui/switch"
 import { useAuth } from "@/contexts/AuthContext"
+import { HomeIcon, UsersIcon, BuildingIcon, MapPinIcon /* other icons */ } from 'lucide-react';
 
 export function Sidebar() {
   const auth = useAuth();
@@ -12,6 +13,10 @@ export function Sidebar() {
   const menuItems = [
     { icon: <FaThLarge size={18} />, label: "Dashboard", description: "System Overview and Insights", href: "/dashboard" },
     { icon: <FaUsers size={18} />, label: "Entities", description: "Manage Your Entities", href: "/entities" },
+    { icon: <HomeIcon />, label: 'Dashboard', href: '/dashboard' },
+    { icon: <UsersIcon />, label: 'Users', href: '/admin/users' },
+    { icon: <BuildingIcon />, label: 'Entities', href: '/admin/entities' },
+    { icon: <MapPinIcon />, label: 'Venues', href: '/admin/venues' },
   ];
 
   const adminMenuItems = [
@@ -21,6 +26,7 @@ export function Sidebar() {
     { icon: <FaKey size={18} />, label: "Permissions", description: "Configure Permissions", href: "/admin/permissions" },
     { icon: <FaServer size={18} />, label: "Resources", description: "Manage API Resources", href: "/admin/resources" },
     { icon: <FaHistory size={18} />, label: "Audit Logs", description: "View System Logs", href: "/admin/audit-logs" },
+    
   ];
 
   return (

@@ -34,3 +34,47 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+
+-----------------------
+Strict Code Generation Protocol:
+
+Component First Principle:
+
+Before creating anything new, thoroughly check if existing components can fulfill the requirement
+
+Verify all available components in the codebase that could potentially solve this problem
+
+Modification Guidelines:
+
+If modification is required, ensure 100% backward compatibility
+
+Never break existing implementations that depend on the component
+
+Document any changes clearly in the component's interface
+
+Creation Restrictions:
+
+New components only permitted when:
+a) No existing component can be adapted
+b) The change would overly complicate an existing component
+c) You can demonstrate the new component will have clear reuse potential
+
+Quality Enforcement:
+
+All solutions must:
+
+Maintain existing patterns
+
+Follow established architecture
+
+Keep interfaces clean and consistent
+
+Preserve all existing functionality
+
+Validation Requirement:
+
+For any suggestion, you must:
+a) Show you've checked for existing solutions
+b) Explain why adaptation isn't possible (if reusing)
+c) Demonstrate how backwards compatibility is maintained

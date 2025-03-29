@@ -1,224 +1,443 @@
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Starting seed...');
-
-  // Create default permissions if they don't exist
-  const defaultPermissions = [
-    { name: 'view', description: 'Permission to view a resource', action: 'read' },
-    { name: 'create', description: 'Permission to create a resource', action: 'create' },
-    { name: 'update', description: 'Permission to update a resource', action: 'update' },
-    { name: 'delete', description: 'Permission to delete a resource', action: 'delete' },
-    { name: 'manage', description: 'Permission to manage a resource (all operations)', action: 'all' },
-  ];
-
-  const createdPermissions = await Promise.all(
-    defaultPermissions.map(permission =>
-      prisma.permissions.upsert({
-        where: { name: permission.name },
-        update: {},
-        create: permission,
-      })
-    )
-  );
-  console.log('Default permissions created');
-
-  // Create default resources if they don't exist
-  const defaultResources = [
-    { name: 'users', path: '/api/users', description: 'User management' },
-    { name: 'permissions', path: '/api/permissions', description: 'Permission management' },
-    { name: 'resources', path: '/api/resources', description: 'Resource management' },
-    { name: 'entity_types', path: '/api/entity-types', description: 'Entity type management' },
-    { name: 'entities', path: '/api/entities', description: 'Entity management' },
-    { name: 'entity_roles', path: '/api/entity-roles', description: 'Entity role management' },
-    { name: 'audit_logs', path: '/api/audit-logs', description: 'Audit logs' },
-    { name: 'reports', path: '/api/reports', description: 'Report management' },
-  ];
-
-  const createdResources = await Promise.all(
-    defaultResources.map(resource =>
-      prisma.resources.upsert({
-        where: { name: resource.name },
-        update: {},
-        create: resource,
-      })
-    )
-  );
-  console.log('Default resources created');
-
-  // Create System entity type
-  const systemEntityType = await prisma.entityTypes.upsert({
-    where: { name: 'System' },
-    update: {},
-    create: {
-      name: 'System',
-      description: 'System-wide administration',
+  // Clear all existing data - using the correct table names from schema
+  console.log('Clearing existing data...');
+  await prisma.$executeRaw`TRUNCATE TABLE users, permissions, resources, "permissionResources", "entityRolePermissions", "entityTypes", entity, "entityRoles", "entityMembers", report, approval, "auditLog", venues, venue_bookings RESTART IDENTITY CASCADE;`;
+  
+  console.log('Seeding database...');
+  
+  // Create users
+  console.log('Creating users...');
+  const godmodeAdmin = await prisma.users.create({
+    data: {
+      username: 'godmode_admin',
+      email: 'admin@example.com',
+      password_hash: await bcrypt.hash('password123', 10),
     },
   });
-  console.log('System entity type created');
-
-  // Create System entity
-  let systemEntity = await prisma.entity.findFirst({
-    where: {
+  
+  const securityAdmin = await prisma.users.create({
+    data: {
+      username: 'security_admin',
+      email: 'security@example.com',
+      password_hash: await bcrypt.hash('password123', 10),
+    },
+  });
+  
+  const studentCouncilAdmin = await prisma.users.create({
+    data: {
+      username: 'council_admin',
+      email: 'council@example.com',
+      password_hash: await bcrypt.hash('password123', 10),
+    },
+  });
+  
+  const tmrClubAdmin = await prisma.users.create({
+    data: {
+      username: 'tmr_admin',
+      email: 'tmr@example.com',
+      password_hash: await bcrypt.hash('password123', 10),
+    },
+  });
+  
+  const techClubAdmin = await prisma.users.create({
+    data: {
+      username: 'tech_admin',
+      email: 'tech@example.com',
+      password_hash: await bcrypt.hash('password123', 10),
+    },
+  });
+  
+  const regularUser = await prisma.users.create({
+    data: {
+      username: 'user',
+      email: 'user@example.com',
+      password_hash: await bcrypt.hash('password123', 10),
+    },
+  });
+  
+  // Create permissions
+  console.log('Creating permissions...');
+  const viewPermission = await prisma.permissions.create({
+    data: {
+      name: 'view',
+      description: 'Permission to view resources',
+      action: 'view',
+    },
+  });
+  
+  const createPermission = await prisma.permissions.create({
+    data: {
+      name: 'create',
+      description: 'Permission to create resources',
+      action: 'create',
+    },
+  });
+  
+  const updatePermission = await prisma.permissions.create({
+    data: {
+      name: 'update',
+      description: 'Permission to update resources',
+      action: 'update',
+    },
+  });
+  
+  const deletePermission = await prisma.permissions.create({
+    data: {
+      name: 'delete',
+      description: 'Permission to delete resources',
+      action: 'delete',
+    },
+  });
+  
+  const managePermission = await prisma.permissions.create({
+    data: {
+      name: 'manage',
+      description: 'Permission to manage all aspects of resources',
+      action: 'manage',
+    },
+  });
+  
+  // Create resources
+  console.log('Creating resources...');
+  const usersResource = await prisma.resources.create({
+    data: {
+      name: 'Users',
+      path: '/users',
+      description: 'User management',
+    },
+  });
+  
+  const entitiesResource = await prisma.resources.create({
+    data: {
+      name: 'Entities',
+      path: '/entities',
+      description: 'Entity management',
+    },
+  });
+  
+  const venuesResource = await prisma.resources.create({
+    data: {
+      name: 'Venues',
+      path: '/venues',
+      description: 'Venue management',
+    },
+  });
+  
+  const bookingsResource = await prisma.resources.create({
+    data: {
+      name: 'Bookings',
+      path: '/bookings',
+      description: 'Venue booking management',
+    },
+  });
+  
+  // Create entity types
+  console.log('Creating entity types...');
+  const systemEntityType = await prisma.entityTypes.create({
+    data: {
       name: 'System',
+      description: 'System-level entity type',
+    },
+  });
+  
+  const departmentEntityType = await prisma.entityTypes.create({
+    data: {
+      name: 'Department',
+      description: 'Department entity type',
+    },
+  });
+  
+  const clubEntityType = await prisma.entityTypes.create({
+    data: {
+      name: 'Club',
+      description: 'Club entity type',
+    },
+  });
+  
+  // Create entities
+  console.log('Creating entities...');
+  const systemEntity = await prisma.entity.create({
+    data: {
+      name: 'System',
+      description: 'System-wide entity',
       entity_type_id: systemEntityType.id,
     },
   });
-
-  if (!systemEntity) {
-    systemEntity = await prisma.entity.create({
-      data: {
-        name: 'System',
-        description: 'System administration entity',
-        entity_type_id: systemEntityType.id,
-      },
-    });
-  }
-  console.log('System entity created');
-
-  // Create System Admin role with all permissions
-  const systemAdminRole = await prisma.entityRoles.upsert({
-    where: {
-      name_entity_type_id: {
-        name: 'System Admin',
-        entity_type_id: systemEntityType.id
-      }
+  
+  const securityEntity = await prisma.entity.create({
+    data: {
+      name: 'Security Department',
+      description: 'Campus security department',
+      entity_type_id: departmentEntityType.id,
     },
-    update: {
-      description: 'Full system administration privileges',
-      entity_id: systemEntity.id,
-      is_default: false,
+  });
+  
+  const studentCouncilEntity = await prisma.entity.create({
+    data: {
+      name: 'Student Council',
+      description: 'Student governing body',
+      entity_type_id: departmentEntityType.id,
     },
-    create: {
+  });
+  
+  const tmrClubEntity = await prisma.entity.create({
+    data: {
+      name: 'Team Manipal Racing',
+      description: 'Racing club for engineering students',
+      entity_type_id: clubEntityType.id,
+    },
+  });
+  
+  const techClubEntity = await prisma.entity.create({
+    data: {
+      name: 'Tech Club',
+      description: 'Technology enthusiasts club',
+      entity_type_id: clubEntityType.id,
+    },
+  });
+  
+  // Create entity roles
+  console.log('Creating entity roles...');
+  const systemAdminRole = await prisma.entityRoles.create({
+    data: {
       name: 'System Admin',
-      description: 'Full system administration privileges',
-      entity_id: systemEntity.id,
+      description: 'Administrator with full system access',
       entity_type_id: systemEntityType.id,
-      is_default: false,
+      entity_id: systemEntity.id,
     },
   });
-
-  // First, create permission-resource mappings
-  await Promise.all(
-    createdPermissions.map(permission =>
-      Promise.all(
-        createdResources.map(resource =>
-          prisma.permissionResources.upsert({
-            where: {
-              permission_id_resource_id: {
-                permission_id: permission.id,
-                resource_id: resource.id,
-              }
-            },
-            update: {},
-            create: {
-              permission_id: permission.id,
-              resource_id: resource.id,
-            },
-          })
-        )
-      )
-    )
-  );
-  console.log('Permission-resource mappings created');
-
-  // Then assign permissions to System Admin role with resources
-  await Promise.all(
-    createdPermissions.map(permission =>
-      Promise.all(
-        createdResources.map(resource =>
-          prisma.entityRolePermissions.upsert({
-            where: {
-              entity_role_id_permission_id_resource_id: {
-                entity_role_id: systemAdminRole.id,
-                permission_id: permission.id,
-                resource_id: resource.id,
-              }
-            },
-            update: {},
-            create: {
-              entity_role_id: systemAdminRole.id,
-              permission_id: permission.id,
-              resource_id: resource.id,
-            },
-          })
-        )
-      )
-    )
-  );
-  console.log('System Admin role and permissions created');
-
-  // Create admin user
-  const password = 'admin123'; // You should change this in production
-  const saltRounds = 10;
-  const password_hash = await bcrypt.hash(password, saltRounds);
-
-  let adminUser = await prisma.users.findUnique({
-    where: { username: 'admin' }
+  
+  const adminRole = await prisma.entityRoles.create({
+    data: {
+      name: 'Admin',
+      description: 'Administrator with full entity access',
+      entity_type_id: departmentEntityType.id,
+      is_default: true,
+    },
   });
-
-  if (!adminUser) {
-    adminUser = await prisma.users.create({
-      data: {
-        username: 'admin',
-        email: 'admin@system.com',
-        password_hash,
-      },
-    });
-  }
-
-  // Assign admin user to System entity with System Admin role
-  const existingMember = await prisma.entityMembers.findFirst({
-    where: {
+  
+  const clubAdminRole = await prisma.entityRoles.create({
+    data: {
+      name: 'Admin',
+      description: 'Club administrator',
+      entity_type_id: clubEntityType.id,
+      is_default: true,
+    },
+  });
+  
+  const memberRole = await prisma.entityRoles.create({
+    data: {
+      name: 'Member',
+      description: 'Regular member',
+      entity_type_id: clubEntityType.id,
+      is_default: true,
+    },
+  });
+  
+  // Assign entity roles to users
+  console.log('Assigning entity roles to users...');
+  await prisma.entityMembers.create({
+    data: {
       entity_id: systemEntity.id,
-      user_id: adminUser.id,
-    }
+      user_id: godmodeAdmin.id,
+      entity_role_id: systemAdminRole.id,
+    },
   });
-
-  if (!existingMember) {
-    await prisma.entityMembers.create({
-      data: {
-        entity_id: systemEntity.id,
-        user_id: adminUser.id,
-        entity_role_id: systemAdminRole.id,
-      },
-    });
-  } else {
-    await prisma.entityMembers.update({
-      where: { id: existingMember.id },
-      data: { entity_role_id: systemAdminRole.id }
-    });
+  
+  await prisma.entityMembers.create({
+    data: {
+      entity_id: securityEntity.id,
+      user_id: securityAdmin.id,
+      entity_role_id: adminRole.id,
+    },
+  });
+  
+  await prisma.entityMembers.create({
+    data: {
+      entity_id: studentCouncilEntity.id,
+      user_id: studentCouncilAdmin.id,
+      entity_role_id: adminRole.id,
+    },
+  });
+  
+  await prisma.entityMembers.create({
+    data: {
+      entity_id: tmrClubEntity.id,
+      user_id: tmrClubAdmin.id,
+      entity_role_id: clubAdminRole.id,
+    },
+  });
+  
+  await prisma.entityMembers.create({
+    data: {
+      entity_id: techClubEntity.id,
+      user_id: techClubAdmin.id,
+      entity_role_id: clubAdminRole.id,
+    },
+  });
+  
+  await prisma.entityMembers.create({
+    data: {
+      entity_id: tmrClubEntity.id,
+      user_id: regularUser.id,
+      entity_role_id: memberRole.id,
+    },
+  });
+  
+  // Create entity role permissions
+  console.log('Creating entity role permissions...');
+  // System Admin permissions (all resources, all permissions)
+  const resources = [usersResource, entitiesResource, venuesResource, bookingsResource];
+  const permissions = [viewPermission, createPermission, updatePermission, deletePermission, managePermission];
+  
+  for (const resource of resources) {
+    for (const permission of permissions) {
+      await prisma.entityRolePermissions.create({
+        data: {
+          entity_role_id: systemAdminRole.id,
+          permission_id: permission.id,
+          resource_id: resource.id,
+        },
+      });
+    }
   }
-  console.log('Admin user created and assigned as System Admin');
-
-  // Create default entity types if they don't exist
-  const defaultEntityTypes = [
-    { name: 'department', description: 'Department entity type' },
-    { name: 'team', description: 'Team entity type' },
-    { name: 'project', description: 'Project entity type' },
-  ];
-
-  for (const entityType of defaultEntityTypes) {
-    await prisma.entityTypes.upsert({
-      where: { name: entityType.name },
-      update: {},
-      create: entityType,
-    });
-  }
-  console.log('Default entity types created');
-
-  console.log('Seed completed successfully');
-  console.log('Admin user credentials:');
-  console.log('Username: admin');
-  console.log('Password: admin123');
+  
+  // Department Admin permissions
+  await prisma.entityRolePermissions.create({
+    data: {
+      entity_role_id: adminRole.id,
+      permission_id: managePermission.id,
+      resource_id: venuesResource.id,
+    },
+  });
+  
+  await prisma.entityRolePermissions.create({
+    data: {
+      entity_role_id: adminRole.id,
+      permission_id: managePermission.id,
+      resource_id: bookingsResource.id,
+    },
+  });
+  
+  // Club Admin permissions
+  await prisma.entityRolePermissions.create({
+    data: {
+      entity_role_id: clubAdminRole.id,
+      permission_id: viewPermission.id,
+      resource_id: venuesResource.id,
+    },
+  });
+  
+  await prisma.entityRolePermissions.create({
+    data: {
+      entity_role_id: clubAdminRole.id,
+      permission_id: createPermission.id,
+      resource_id: bookingsResource.id,
+    },
+  });
+  
+  // Create venues
+  console.log('Creating venues...');
+  const mainAuditorium = await prisma.venue.create({
+    data: {
+      name: 'Main Auditorium',
+      description: 'Large auditorium for major events',
+      address: 'Main Campus, Building A',
+      capacity: 500,
+      amenities: 'Stage, Sound System, Projector',
+      entity_id: systemEntity.id,
+    },
+  });
+  
+  const conferenceHall = await prisma.venue.create({
+    data: {
+      name: 'Conference Hall',
+      description: 'Medium-sized hall for conferences',
+      address: 'Main Campus, Building B',
+      capacity: 200,
+      amenities: 'Tables, Chairs, Projector, Whiteboard',
+      entity_id: systemEntity.id,
+    },
+  });
+  
+  const sportsField = await prisma.venue.create({
+    data: {
+      name: 'Sports Field',
+      description: 'Outdoor field for sports events',
+      address: 'South Campus',
+      capacity: 1000,
+      amenities: 'Floodlights, Seating',
+      entity_id: systemEntity.id,
+    },
+  });
+  
+  const clubRoom = await prisma.venue.create({
+    data: {
+      name: 'Club Room',
+      description: 'Small room for club meetings',
+      address: 'Student Center, Room 101',
+      capacity: 30,
+      amenities: 'Tables, Chairs, Whiteboard',
+      entity_id: studentCouncilEntity.id,
+    },
+  });
+  
+  // Create venue bookings
+  console.log('Creating venue bookings...');
+  const now = new Date();
+  
+  await prisma.venueBooking.create({
+    data: {
+      venue_id: mainAuditorium.id,
+      entity_id: tmrClubEntity.id,
+      title: 'Annual Racing Exhibition',
+      description: 'Showcase of racing projects',
+      start_time: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7, 10, 0),
+      end_time: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7, 16, 0),
+      status: 'approved',
+      created_by: tmrClubAdmin.id,
+      approved_by: godmodeAdmin.id,
+    },
+  });
+  
+  await prisma.venueBooking.create({
+    data: {
+      venue_id: conferenceHall.id,
+      entity_id: techClubEntity.id,
+      title: 'Tech Workshop',
+      description: 'Workshop on latest technologies',
+      start_time: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3, 14, 0),
+      end_time: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3, 17, 0),
+      status: 'pending',
+      created_by: techClubAdmin.id,
+    },
+  });
+  
+  await prisma.venueBooking.create({
+    data: {
+      venue_id: clubRoom.id,
+      entity_id: studentCouncilEntity.id,
+      title: 'Council Meeting',
+      description: 'Monthly council meeting',
+      start_time: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 16, 0),
+      end_time: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 18, 0),
+      status: 'approved',
+      created_by: studentCouncilAdmin.id,
+      approved_by: godmodeAdmin.id,
+    },
+  });
+  
+  console.log('Database seeded successfully!');
 }
 
 main()
   .catch((e) => {
-    console.error('Error during seeding:', e);
+    console.error(e);
     process.exit(1);
   })
   .finally(async () => {

