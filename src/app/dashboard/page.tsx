@@ -46,6 +46,7 @@ import { useToast } from '@/components/ui/use-toast';
 export default function UserDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -81,6 +82,41 @@ export default function UserDashboardPage() {
     }
   }, [router, toast]);
 
+  // Add a function to handle API responses and check for permission errors
+  const handleApiResponse = async (url: string) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.status === 403) {
+        setPermissionError('You do not have permission to access this resource');
+        return null;
+      }
+      
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('API request error:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'An error occurred',
+        variant: 'destructive',
+      });
+      return null;
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('auth_token');
@@ -91,6 +127,28 @@ export default function UserDashboardPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show permission error if present
+  if (permissionError) {
+    return (
+      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Access Denied</CardTitle>
+            <CardDescription>Permission Error</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p>{permissionError}</p>
+          </CardContent>
+          <div className="p-4 flex justify-end">
+            <Button onClick={() => router.push('/dashboard')}>
+              Return to Dashboard
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }

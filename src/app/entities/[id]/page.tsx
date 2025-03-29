@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import PermissionError from '@/components/PermissionError';
 
 interface Entity {
   id: number;
@@ -37,26 +38,43 @@ interface EntityMember {
   };
 }
 
-export default function EntityPage() {
+export default function EntityDetailPage() {
   const { id } = useParams();
   const { user, hasEntityRole } = useAuth();
   const { toast } = useToast();
   const [entity, setEntity] = useState<Entity | null>(null);
   const [members, setMembers] = useState<EntityMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   useEffect(() => {
     const fetchEntityData = async () => {
       try {
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+          setError('Authentication required');
+          setIsLoading(false);
+          return;
+        }
+        
         // Fetch entity details
         const entityResponse = await fetch(`/api/entities/${id}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+            'Authorization': `Bearer ${token}`,
           },
         });
 
+        if (entityResponse.status === 403) {
+          setPermissionDenied(true);
+          setIsLoading(false);
+          return;
+        }
+
         if (!entityResponse.ok) {
-          throw new Error('Failed to fetch entity details');
+          setError(entityResponse.status === 404 ? 'Entity not found' : 'Failed to load entity');
+          setIsLoading(false);
+          return;
         }
 
         const entityData = await entityResponse.json();
@@ -65,7 +83,7 @@ export default function EntityPage() {
         // Fetch entity members
         const membersResponse = await fetch(`/api/entity-members?entityId=${id}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+            'Authorization': `Bearer ${token}`,
           },
         });
 
@@ -76,11 +94,13 @@ export default function EntityPage() {
         const membersData = await membersResponse.json();
         setMembers(membersData);
       } catch (error) {
+        console.error('Error fetching entity data:', error);
         toast({
           title: 'Error',
           description: error instanceof Error ? error.message : 'Failed to load entity data',
           variant: 'destructive',
         });
+        setError('An error occurred while fetching the entity');
       } finally {
         setIsLoading(false);
       }
@@ -98,6 +118,18 @@ export default function EntityPage() {
       </div>
     );
   }
+  
+  if (permissionDenied) {
+    return <PermissionError message="You do not have permission to view this entity" />;
+  }
+  
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">Error: {error}</div>
+      </div>
+    );
+  }
 
   if (!entity) {
     return (
@@ -107,7 +139,7 @@ export default function EntityPage() {
     );
   }
 
-  const isAdmin = hasEntityRole(entity.id, 'Admin');
+  const isAdmin = hasEntityRole && hasEntityRole(entity.id, 'Admin');
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -148,7 +180,7 @@ export default function EntityPage() {
                     <div className="font-medium">{member.entityRole.name}</div>
                   </div>
                 </div>
-                {member.entityRole.entityRolePermissions.length > 0 && (
+                {member.entityRole.entityRolePermissions?.length > 0 && (
                   <div className="mt-2">
                     <div className="text-sm font-medium mb-1">Permissions:</div>
                     <div className="flex flex-wrap gap-2">

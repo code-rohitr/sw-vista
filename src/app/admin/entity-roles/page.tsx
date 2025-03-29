@@ -434,7 +434,7 @@ export default function EntityRoleManagementPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isEditMode ? 'Edit Entity Role' : 'Create Entity Role'}</DialogTitle>
             <DialogDescription>
@@ -490,7 +490,7 @@ export default function EntityRoleManagementPage() {
 
             <div className="grid grid-cols-4 items-start gap-4">
               <Label className="text-right mt-2">Permissions & Resources</Label>
-              <div className="col-span-3 space-y-4">
+              <div className="col-span-3 space-y-4 max-h-[300px] overflow-y-auto pr-2">
                 {permissions.map((permission) => (
                   <div key={permission.id} className="space-y-2">
                     <div className="flex items-center space-x-2">
@@ -523,20 +523,23 @@ export default function EntityRoleManagementPage() {
                               <input
                                 type="checkbox"
                                 id={`permission-${permission.id}-resource-${resource.id}`}
-                                checked={selectedPermissionResources[permission.id]?.includes(resource.id)}
+                                checked={selectedPermissionResources[permission.id]?.includes(resource.id) || false}
                                 onChange={(e) => {
-                                  const currentResources = selectedPermissionResources[permission.id] || [];
-                                  if (e.target.checked) {
-                                    setSelectedPermissionResources({
-                                      ...selectedPermissionResources,
-                                      [permission.id]: [...currentResources, resource.id]
-                                    });
-                                  } else {
-                                    setSelectedPermissionResources({
-                                      ...selectedPermissionResources,
-                                      [permission.id]: currentResources.filter(id => id !== resource.id)
-                                    });
-                                  }
+                                  const isChecked = e.target.checked;
+                                  setSelectedPermissionResources((prev) => {
+                                    const newState = { ...prev };
+                                    if (!newState[permission.id]) {
+                                      newState[permission.id] = [];
+                                    }
+                                    
+                                    if (isChecked) {
+                                      newState[permission.id] = [...newState[permission.id], resource.id];
+                                    } else {
+                                      newState[permission.id] = newState[permission.id].filter(id => id !== resource.id);
+                                    }
+                                    
+                                    return newState;
+                                  });
                                 }}
                               />
                               <Label 
