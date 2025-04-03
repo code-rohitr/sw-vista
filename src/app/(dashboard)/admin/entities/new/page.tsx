@@ -98,7 +98,7 @@ export default function NewEntityPage() {
         body: JSON.stringify({
           name: formData.name,
           entityTypeId: formData.entityTypeId,
-          parentId: formData.parentId || null,
+          parentId: formData.parentId === 'none' ? null : formData.parentId,
         }),
       });
 
@@ -197,7 +197,7 @@ export default function NewEntityPage() {
                   <SelectValue placeholder="Select parent entity" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {parentEntities.map((entity) => (
                     <SelectItem key={entity.id} value={entity.id}>
                       {entity.name}
