@@ -14,6 +14,12 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
 
 interface EntityType {
   id: string;
@@ -23,143 +29,193 @@ interface EntityType {
 interface Entity {
   id: string;
   name: string;
+  description: string | null;
   entityType: {
     id: string;
     name: string;
   };
-  parent?: {
+  parent: {
+    id: string;
+    name: string;
+  } | null;
+  children: {
+    id: string;
+    name: string;
+  }[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface EntityRole {
+  id: string;
+  name: string;
+  description: string | null;
+  template: {
     id: string;
     name: string;
   };
+  entityRolePermissions: {
+    permission: {
+      id: string;
+      name: string;
+      action: string;
+      scope: string | null;
+    };
+    resource: {
+      id: string;
+      name: string;
+      path: string;
+    };
+  }[];
 }
 
-export default function EditEntityPage({ params }: { params: { id: string } }) {
-  const [entity, setEntity] = useState<Entity | null>(null);
-  const [entityTypes, setEntityTypes] = useState<EntityType[]>([]);
-  const [parentEntities, setParentEntities] = useState<Entity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    entityTypeId: '',
-    parentId: '',
-  });
+interface EntityMember {
+  id: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+  };
+  entityRole: {
+    id: string;
+    name: string;
+    description: string | null;
+  };
+}
 
+interface AuditLog {
+  id: string;
+  user: {
+    id: string;
+    username: string;
+  };
+  action: string;
+  details: string;
+  created_at: string;
+}
+
+export default function EntityDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const { toast } = useToast();
+  const [entity, setEntity] = useState<Entity | null>(null);
+  const [roles, setRoles] = useState<EntityRole[]>([]);
+  const [members, setMembers] = useState<EntityMember[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
 
   const fetchEntity = useCallback(async () => {
     try {
-      const response = await fetch(`/api/entities/${params.id}`, {
+      const response = await fetch(`/api/entities/${resolvedParams.id}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
-      });
-      if (!response.ok) throw new Error('Failed to fetch entity');
-      const data = await response.json();
-      setEntity(data);
-      setFormData({
-        name: data.name,
-        entityTypeId: data.entityType.id,
-        parentId: data.parent?.id || '',
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch entity',
-        variant: 'destructive',
-      });
-    }
-  }, [params.id, toast]);
-
-  const fetchEntityTypes = useCallback(async () => {
-    try {
-      const response = await fetch('/api/entity-types', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      if (!response.ok) throw new Error('Failed to fetch entity types');
-      const data = await response.json();
-      setEntityTypes(data);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch entity types',
-        variant: 'destructive',
-      });
-    }
-  }, [toast]);
-
-  const fetchParentEntities = useCallback(async () => {
-    try {
-      const response = await fetch('/api/entities', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      if (!response.ok) throw new Error('Failed to fetch parent entities');
-      const data = await response.json();
-      // Filter out the current entity and its children from parent options
-      const filteredEntities = data.filter((e: Entity) => e.id !== params.id);
-      setParentEntities(filteredEntities);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch parent entities',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [params.id, toast]);
-
-  useEffect(() => {
-    fetchEntity();
-    fetchEntityTypes();
-    fetchParentEntities();
-  }, [fetchEntity, fetchEntityTypes, fetchParentEntities]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-
-    try {
-      const response = await fetch(`/api/entities/${params.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          entityTypeId: formData.entityTypeId,
-          parentId: formData.parentId || null,
-        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update entity');
+        throw new Error('Failed to fetch entity');
       }
 
-      toast({
-        title: 'Success',
-        description: 'Entity updated successfully',
-      });
-
-      router.push('/admin/entities');
+      const data = await response.json();
+      setEntity(data);
     } catch (error) {
+      console.error('Error fetching entity:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update entity',
+        description: 'Failed to fetch entity details',
         variant: 'destructive',
       });
-    } finally {
-      setIsSaving(false);
     }
-  };
+  }, [resolvedParams.id, toast]);
 
-  if (isLoading) {
+  const fetchRoles = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/entities/${resolvedParams.id}/roles`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch roles');
+      }
+
+      const data = await response.json();
+      setRoles(data);
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch entity roles',
+        variant: 'destructive',
+      });
+    }
+  }, [resolvedParams.id, toast]);
+
+  const fetchMembers = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/entities/${resolvedParams.id}/members`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch members');
+      }
+
+      const data = await response.json();
+      setMembers(data);
+    } catch (error) {
+      console.error('Error fetching members:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch entity members',
+        variant: 'destructive',
+      });
+    }
+  }, [resolvedParams.id, toast]);
+
+  const fetchAuditLogs = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/audit-logs?entityId=${resolvedParams.id}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch audit logs');
+      }
+
+      const data = await response.json();
+      setAuditLogs(data);
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch audit logs',
+        variant: 'destructive',
+      });
+    }
+  }, [resolvedParams.id, toast]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchEntity(),
+        fetchRoles(),
+        fetchMembers(),
+        fetchAuditLogs(),
+      ]);
+      setLoading(false);
+    };
+    loadData();
+  }, [fetchEntity, fetchRoles, fetchMembers, fetchAuditLogs]);
+
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
@@ -187,100 +243,214 @@ export default function EditEntityPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Edit Entity</h1>
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">{entity.name}</h1>
+          <p className="text-muted-foreground">{entity.description}</p>
+        </div>
+        <div className="space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/admin/entities/${resolvedParams.id}/edit`)}
+          >
+            Edit Entity
+          </Button>
+          <Button
+            onClick={() => router.push(`/admin/entities/${resolvedParams.id}/members/add`)}
+          >
+            Add Member
+          </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Edit Entity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="name" className="text-sm font-medium">
-                Name
-              </label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                required
-              />
-            </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="members">Members</TabsTrigger>
+          <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="audit">Audit Logs</TabsTrigger>
+        </TabsList>
 
-            <div className="space-y-2">
-              <label htmlFor="entityType" className="text-sm font-medium">
-                Entity Type
-              </label>
-              <Select
-                value={formData.entityTypeId}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, entityTypeId: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select entity type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {entityTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.id}>
-                      {type.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <TabsContent value="overview">
+          <Card>
+            <CardHeader>
+              <CardTitle>Entity Details</CardTitle>
+              <CardDescription>Basic information about the entity</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4">
+                <div>
+                  <h3 className="font-medium">Entity Type</h3>
+                  <p>{entity.entityType.name}</p>
+                </div>
+                <div>
+                  <h3 className="font-medium">Parent Entity</h3>
+                  <p>{entity.parent?.name || 'None'}</p>
+                </div>
+                <div>
+                  <h3 className="font-medium">Child Entities</h3>
+                  {entity.children.length > 0 ? (
+                    <ul className="list-disc list-inside">
+                      {entity.children.map((child) => (
+                        <li key={child.id}>
+                          <Button
+                            variant="link"
+                            onClick={() => router.push(`/admin/entities/${child.id}`)}
+                          >
+                            {child.name}
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>No child entities</p>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-medium">Created At</h3>
+                  <p>{new Date(entity.created_at).toLocaleString()}</p>
+                </div>
+                <div>
+                  <h3 className="font-medium">Last Updated</h3>
+                  <p>{new Date(entity.updated_at).toLocaleString()}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            <div className="space-y-2">
-              <label htmlFor="parent" className="text-sm font-medium">
-                Parent Entity (Optional)
-              </label>
-              <Select
-                value={formData.parentId}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, parentId: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select parent entity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None</SelectItem>
-                  {parentEntities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
-                      {entity.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex justify-end space-x-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.push('/admin/entities')}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Changes'
+        <TabsContent value="members">
+          <Card>
+            <CardHeader>
+              <CardTitle>Entity Members</CardTitle>
+              <CardDescription>Users who are members of this entity</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between p-4 border rounded-lg"
+                  >
+                    <div>
+                      <h3 className="font-medium">{member.user.username}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {member.user.email}
+                      </p>
+                      <p className="text-sm">Role: {member.entityRole.name}</p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => router.push(`/admin/entities/${resolvedParams.id}/members/${member.user.id}`)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                {members.length === 0 && (
+                  <p className="text-center text-muted-foreground">
+                    No members found
+                  </p>
                 )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="roles">
+          <Card>
+            <CardHeader>
+              <CardTitle>Entity Roles</CardTitle>
+              <CardDescription>Roles defined for this entity</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {roles.map((role) => (
+                  <div
+                    key={role.id}
+                    className="p-4 border rounded-lg"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium">{role.name}</h3>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/admin/entities/${resolvedParams.id}/roles/${role.id}`)}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {role.description || 'No description'}
+                    </p>
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">Permissions:</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {role.entityRolePermissions.map((permission) => (
+                          <div
+                            key={permission.permission.id}
+                            className="text-sm p-2 bg-muted rounded"
+                          >
+                            {permission.permission.name} on{' '}
+                            {permission.resource.name}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {roles.length === 0 && (
+                  <p className="text-center text-muted-foreground">
+                    No roles defined
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <Card>
+            <CardHeader>
+              <CardTitle>Audit Logs</CardTitle>
+              <CardDescription>History of actions performed on this entity</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {auditLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-4 border rounded-lg"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className="font-medium">{log.user.username}</span>
+                        <span className="text-muted-foreground mx-2">•</span>
+                        <span className="text-muted-foreground">
+                          {new Date(log.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {log.action}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {log.details}
+                    </p>
+                  </div>
+                ))}
+                {auditLogs.length === 0 && (
+                  <p className="text-center text-muted-foreground">
+                    No audit logs found
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 } 
