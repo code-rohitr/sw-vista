@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
@@ -23,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { MoreHorizontal, Search, UserPlus, Edit, Trash2, Loader2, History } from 'lucide-react';
+import { MoreHorizontal, Search, Plus, Edit, Trash2, Loader2, Users } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,48 +34,46 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-interface User {
+interface Entity {
   id: string;
-  username: string;
-  email: string;
-  isSystemAdmin: boolean;
+  name: string;
+  entityType: {
+    id: string;
+    name: string;
+  };
+  parent?: {
+    id: string;
+    name: string;
+  };
   createdAt: string;
-  entityMembers: {
-    entity: {
-      name: string;
-    };
-    entityRole: {
-      name: string;
-    };
-  }[];
+  updatedAt: string;
 }
 
-export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+export default function EntitiesPage() {
+  const [entities, setEntities] = useState<Entity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [entityToDelete, setEntityToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { user: currentUser } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
-  const fetchUsers = useCallback(async () => {
+  const fetchEntities = useCallback(async () => {
     try {
-      const response = await fetch('/api/users', {
+      const response = await fetch('/api/entities', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch users');
+        throw new Error('Failed to fetch entities');
       }
       const data = await response.json();
-      setUsers(data);
+      setEntities(data);
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to fetch users. Please try again.',
+        description: 'Failed to fetch entities. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -85,19 +82,19 @@ export default function UsersPage() {
   }, [toast]);
 
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    fetchEntities();
+  }, [fetchEntities]);
 
-  const handleDelete = async (userId: string) => {
-    setUserToDelete(userId);
+  const handleDelete = async (entityId: string) => {
+    setEntityToDelete(entityId);
   };
 
   const confirmDelete = async () => {
-    if (!userToDelete) return;
+    if (!entityToDelete) return;
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`/api/users/${userToDelete}`, {
+      const response = await fetch(`/api/entities/${entityToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -105,30 +102,30 @@ export default function UsersPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete user');
+        throw new Error('Failed to delete entity');
       }
 
       toast({
         title: 'Success',
-        description: 'User deleted successfully',
+        description: 'Entity deleted successfully',
       });
 
-      fetchUsers(); // Refresh the list
+      fetchEntities(); // Refresh the list
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to delete user. Please try again.',
+        description: 'Failed to delete entity. Please try again.',
         variant: 'destructive',
       });
     } finally {
       setIsDeleting(false);
-      setUserToDelete(null);
+      setEntityToDelete(null);
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredEntities = entities.filter(entity =>
+    entity.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    entity.entityType.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isLoading) {
@@ -136,7 +133,7 @@ export default function UsersPage() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <div>Loading users...</div>
+          <div>Loading entities...</div>
         </div>
       </div>
     );
@@ -145,10 +142,10 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Users</h1>
-        <Button onClick={() => router.push('/admin/users/new')}>
-          <UserPlus className="w-4 h-4 mr-2" />
-          Add User
+        <h1 className="text-3xl font-bold">Entities</h1>
+        <Button onClick={() => router.push('/admin/entities/new')}>
+          <Plus className="w-4 h-4 mr-2" />
+          Add Entity
         </Button>
       </div>
 
@@ -158,7 +155,7 @@ export default function UsersPage() {
             <div className="flex items-center space-x-4">
               <Search className="w-4 h-4 text-gray-500" />
               <Input
-                placeholder="Search users..."
+                placeholder="Search entities..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="max-w-sm"
@@ -170,54 +167,40 @@ export default function UsersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Username</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Entities</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Parent</TableHead>
                 <TableHead>Created At</TableHead>
+                <TableHead>Updated At</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.length === 0 ? (
+              {filteredEntities.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center">
                     {searchQuery ? (
                       <div className="text-muted-foreground">
-                        No users found matching "{searchQuery}"
+                        No entities found matching "{searchQuery}"
                       </div>
                     ) : (
                       <div className="text-muted-foreground">
-                        No users found
+                        No entities found
                       </div>
                     )}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.username}</TableCell>
-                    <TableCell>{user.email}</TableCell>
+                filteredEntities.map((entity) => (
+                  <TableRow key={entity.id}>
+                    <TableCell className="font-medium">{entity.name}</TableCell>
+                    <TableCell>{entity.entityType.name}</TableCell>
+                    <TableCell>{entity.parent?.name || '-'}</TableCell>
                     <TableCell>
-                      {user.isSystemAdmin ? (
-                        <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">
-                          System Admin
-                        </span>
-                      ) : (
-                        <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-gray-700 dark:text-gray-300">
-                          User
-                        </span>
-                      )}
+                      {new Date(entity.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      {user.entityMembers.map(membership => (
-                        <div key={`${user.id}-${membership.entity.name}`} className="text-sm">
-                          {membership.entity.name} ({membership.entityRole.name})
-                        </div>
-                      ))}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {new Date(entity.updatedAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -229,21 +212,21 @@ export default function UsersPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/users/${user.id}`)}
+                            onClick={() => router.push(`/admin/entities/${entity.id}`)}
                           >
                             <Edit className="w-4 h-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/users/${user.id}/activity`)}
+                            onClick={() => router.push(`/admin/entities/${entity.id}/members`)}
                           >
-                            <History className="w-4 h-4 mr-2" />
-                            Activity Log
+                            <Users className="w-4 h-4 mr-2" />
+                            Members
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-red-600"
-                            onClick={() => handleDelete(user.id)}
+                            onClick={() => handleDelete(entity.id)}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete
@@ -259,12 +242,12 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+      <AlertDialog open={!!entityToDelete} onOpenChange={(open) => !open && setEntityToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the user.
+              This action cannot be undone. This will permanently delete the entity and all its child entities.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -27,27 +27,35 @@ export async function GET(request: NextRequest) {
     }
 
     // Get query parameters
-    const url = new URL(request.url);
-    const entityTypeId = url.searchParams.get('entityTypeId');
+    const { searchParams } = new URL(request.url);
+    const entityTypeId = searchParams.get('entityTypeId');
 
-    // Build query
-    const query: any = {
+    // Build the where clause
+    const where = entityTypeId ? {
+      entityType_id: entityTypeId,
+    } : {};
+
+    // Get entities with their types and parent
+    const entities = await prisma.entity.findMany({
+      where,
       include: {
-        entityType: true,
-        parent: true,
-        children: true
-      }
-    };
-
-    // Add entity type filter if provided
-    if (entityTypeId) {
-      query.where = {
-        entityType_id: entityTypeId
-      };
-    }
-
-    // Get all entities
-    const entities = await prisma.entity.findMany(query);
+        entityType: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        parent: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
 
     return NextResponse.json(entities);
   } catch (error) {
@@ -68,62 +76,38 @@ export async function POST(request: NextRequest) {
       return authResult;
     }
 
-    // Get request body
-    const { name, description, entityType_id, parent_id } = await request.json();
+    const body = await request.json();
+    const { name, entityTypeId, parentId } = body;
 
-    // Validate input
-    if (!name) {
+    // Validate required fields
+    if (!name || !entityTypeId) {
       return NextResponse.json(
-        { message: 'Entity name is required' },
+        { message: 'Name and entity type are required' },
         { status: 400 }
       );
     }
 
-    if (!entityType_id) {
-      return NextResponse.json(
-        { message: 'Entity type is required' },
-        { status: 400 }
-      );
-    }
-
-    // Check if an entity with the same name exists for this entity type
-    const existingEntity = await prisma.entity.findFirst({
-      where: {
-        name,
-        entityType_id
-      }
-    });
-
-    if (existingEntity) {
-      return NextResponse.json(
-        { message: `An entity with the name "${name}" already exists for this entity type` },
-        { status: 400 }
-      );
-    }
-
-    // If parent_id is provided, check if user has access to the parent entity
-    if (parent_id) {
-      const hasAccess = await hasEntityAccess(authResult.user.id, parent_id);
-      if (!hasAccess) {
-        return NextResponse.json(
-          { message: 'You do not have permission to create entities under this parent' },
-          { status: 403 }
-        );
-      }
-    }
-
-    // Create entity
+    // Create the entity
     const entity = await prisma.entity.create({
       data: {
         name,
-        description,
-        entityType_id,
-        parent_id
+        entityType_id: entityTypeId,
+        parent_id: parentId || null,
       },
       include: {
-        entityType: true,
-        parent: true
-      }
+        entityType: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        parent: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
 
     // Log the action
@@ -131,12 +115,16 @@ export async function POST(request: NextRequest) {
       data: {
         user_id: authResult.user.id,
         entity_type: 'entity',
-        action: 'create_entity',
-        details: { entityId: entity.id }
-      }
+        action: 'create',
+        details: JSON.stringify({
+          name,
+          entityTypeId,
+          parentId,
+        }),
+      },
     });
 
-    return NextResponse.json(entity, { status: 201 });
+    return NextResponse.json(entity);
   } catch (error) {
     console.error('Error creating entity:', error);
     return NextResponse.json(

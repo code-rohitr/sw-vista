@@ -38,59 +38,34 @@ type UserQuery = {
 // GET /api/users - Get all users
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      console.log(user,"user")
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    const authResult = await requirePermission('view', '/api/users')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
-    // Check if user is System Admin
-    if (!user.isSystemAdmin) {
-      return NextResponse.json(
-        { message: 'Only System Admins can view all users' },
-        { status: 403 }
-      );
-    }
-
-    // Build query
-    const query: UserQuery = {
+    const users = await prisma.users.findMany({
       include: {
         entityMembers: {
           include: {
-            entity: {
-              include: {
-                entityType: true,
-              },
-            },
-            entityRole: {
-              include: {
-                template: true,
-                entityRolePermissions: {
-                  include: {
-                    permission: true,
-                    resource: true,
-                  },
-                },
-              },
-            },
+            entity: true,
+            entityRole: true,
           },
         },
       },
-      orderBy: { created_at: 'desc' }
-    };
-
-    // Get all users
-    const users = await prisma.users.findMany(query);
+      orderBy: { created_at: 'desc' },
+    });
 
     // Remove password_hash from response
-    const usersWithoutPassword = users.map(({ password_hash, ...user }) => user);
+    const sanitizedUsers = users.map(user => {
+      const { password_hash, ...userWithoutPassword } = user;
+      return userWithoutPassword;
+    });
 
-    return NextResponse.json(usersWithoutPassword);
+    return NextResponse.json(sanitizedUsers);
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json(
-      { message: 'Failed to fetch users' },
+      { error: 'Failed to fetch users' },
       { status: 500 }
     );
   }

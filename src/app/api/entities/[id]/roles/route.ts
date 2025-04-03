@@ -9,32 +9,15 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const entityId = parseInt(params.id);
-    if (isNaN(entityId)) {
-      return NextResponse.json(
-        { message: 'Invalid entity ID' },
-        { status: 400 }
-      );
-    }
-
     // Check if user has permission to view entity roles
     const authResult = await requirePermission('view', '/api/entities/roles', 'id')(request);
     if ('isAuthorized' in authResult === false) {
       return authResult;
     }
 
-    // Check if user has access to this entity
-    const hasAccess = await hasEntityAccess(authResult.user.id, entityId);
-    if (!hasAccess) {
-      return NextResponse.json(
-        { message: 'You do not have permission to view roles of this entity' },
-        { status: 403 }
-      );
-    }
-
     // Get all roles for the entity
     const roles = await prisma.entityRoles.findMany({
-      where: { entity_id: entityId },
+      where: { entity_id: params.id },
       include: {
         template: true,
         entityRolePermissions: {
@@ -62,27 +45,10 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const entityId = parseInt(params.id);
-    if (isNaN(entityId)) {
-      return NextResponse.json(
-        { message: 'Invalid entity ID' },
-        { status: 400 }
-      );
-    }
-
     // Check if user has permission to manage entity roles
     const authResult = await requirePermission('manage', '/api/entities/roles', 'id')(request);
     if ('isAuthorized' in authResult === false) {
       return authResult;
-    }
-
-    // Check if user has access to this entity
-    const hasAccess = await hasEntityAccess(authResult.user.id, entityId);
-    if (!hasAccess) {
-      return NextResponse.json(
-        { message: 'You do not have permission to manage roles of this entity' },
-        { status: 403 }
-      );
     }
 
     // Get request body
@@ -113,7 +79,7 @@ export async function POST(
       data: {
         name,
         description,
-        entity_id: entityId,
+        entity_id: params.id,
         template_id,
       },
       include: {
@@ -147,7 +113,7 @@ export async function POST(
       data: {
         user_id: authResult.user.id,
         entity_type: 'entity',
-        entity_id: entityId,
+        entity_id: params.id,
         action: 'create_role',
         details: JSON.stringify({ name, template_id, permissions })
       }

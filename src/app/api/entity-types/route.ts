@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyAuth } from '@/lib/auth';
+import { requirePermission } from '@/middleware/roleCheck';
 
 // GET /api/entity-types - Get all entity types
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    // Check if user has permission to view entity types
+    const authResult = await requirePermission('view', '/api/entity-types')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
-    // Get all entity types
+    // Get entity types
     const entityTypes = await prisma.entityTypes.findMany({
-      orderBy: { created_at: 'desc' }
+      select: {
+        id: true,
+        name: true,
+        description: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
     });
 
     return NextResponse.json(entityTypes);
@@ -29,40 +36,45 @@ export async function GET(request: NextRequest) {
 // POST /api/entity-types - Create a new entity type
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    // Check if user has permission to create entity types
+    const authResult = await requirePermission('create', '/api/entity-types')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
-    // Check if user is System Admin
-    if (!user.isSystemAdmin) {
-      return NextResponse.json(
-        { message: 'Only System Admins can create entity types' },
-        { status: 403 }
-      );
-    }
+    const body = await request.json();
+    const { name, description } = body;
 
-    // Get request body
-    const { name, description } = await request.json();
-
-    // Validate input
+    // Validate required fields
     if (!name) {
       return NextResponse.json(
-        { message: 'Entity type name is required' },
+        { message: 'Name is required' },
         { status: 400 }
       );
     }
 
-    // Create entity type
+    // Create the entity type
     const entityType = await prisma.entityTypes.create({
       data: {
         name,
-        description
-      }
+        description,
+      },
     });
 
-    return NextResponse.json(entityType, { status: 201 });
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: authResult.user.id,
+        entity_type: 'entityType',
+        action: 'create',
+        details: JSON.stringify({
+          name,
+          description,
+        }),
+      },
+    });
+
+    return NextResponse.json(entityType);
   } catch (error) {
     console.error('Error creating entity type:', error);
     return NextResponse.json(
