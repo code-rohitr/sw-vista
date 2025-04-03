@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyAuth } from '@/lib/auth';
+import { verifyAuth, hasVenueAccess } from '@/lib/auth';
+import { requirePermission } from '@/middleware/roleCheck';
 
 // GET /api/venues/[id] - Get a specific venue
 export async function GET(
@@ -8,22 +9,46 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(params.id);
-    
-    // Verify authentication
+    // First verify basic authentication
     const user = await verifyAuth(request);
     if (!user) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get venue by ID
+    const id = parseInt(params.id);
+    if (isNaN(id)) {
+      return NextResponse.json({ message: 'Invalid venue ID' }, { status: 400 });
+    }
+
+    // Check if user has general permission to view venues
+    const authResult = await requirePermission('view', '/api/venues')(request);
+    if ('isAuthorized' in authResult === false) {
+      return NextResponse.json({ message: 'Permission denied' }, { status: 403 });
+    }
+
+    // Check if user has access to this specific venue through entity membership
+    const hasAccess = await hasVenueAccess(user.id, id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { message: 'You do not have permission to view this venue' },
+        { status: 403 }
+      );
+    }
+
+    // Get venue by ID with full details
     const venue = await prisma.venue.findUnique({
       where: { id },
       include: {
         entity: {
           select: {
             id: true,
-            name: true
+            name: true,
+            entityType: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
           }
         }
       }
@@ -49,34 +74,28 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(params.id);
-    
-    // Verify authentication
+    // First verify basic authentication
     const user = await verifyAuth(request);
     if (!user) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get venue to check entity ownership
-    const existingVenue = await prisma.venue.findUnique({
-      where: { id },
-      select: { entity_id: true }
-    });
-
-    if (!existingVenue) {
-      return NextResponse.json({ message: 'Venue not found' }, { status: 404 });
+    const id = parseInt(params.id);
+    if (isNaN(id)) {
+      return NextResponse.json({ message: 'Invalid venue ID' }, { status: 400 });
     }
 
-    // Check if user has admin role for this venue's entity
-    const hasAdminRole = user.entityMembers.some(
-      membership => 
-        membership.entity.id === existingVenue.entity_id && 
-        membership.entityRole.name === 'Admin'
-    );
-    
-    if (!hasAdminRole) {
+    // Check if user has general permission to update venues
+    const authResult = await requirePermission('update', '/api/venues')(request);
+    if ('isAuthorized' in authResult === false) {
+      return NextResponse.json({ message: 'Permission denied' }, { status: 403 });
+    }
+
+    // Check if user has access to this specific venue through entity membership
+    const hasAccess = await hasVenueAccess(user.id, id);
+    if (!hasAccess) {
       return NextResponse.json(
-        { message: 'Only entity admins can update venues' },
+        { message: 'You do not have permission to update this venue' },
         { status: 403 }
       );
     }
@@ -84,22 +103,14 @@ export async function PUT(
     // Get request body
     const { name, description, address, capacity, amenities } = await request.json();
 
-    // Validate input
-    if (!name) {
-      return NextResponse.json(
-        { message: 'Venue name is required' },
-        { status: 400 }
-      );
-    }
-
     // Update venue
-    const venue = await prisma.venue.update({
+    const updatedVenue = await prisma.venue.update({
       where: { id },
       data: {
         name,
         description,
         address,
-        capacity: capacity ? parseInt(capacity) : null,
+        capacity,
         amenities
       },
       include: {
@@ -112,7 +123,17 @@ export async function PUT(
       }
     });
 
-    return NextResponse.json(venue);
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        user_id: user.id,
+        entity_type: 'venue',
+        entity_id: updatedVenue.id,
+        action: 'update_venue'
+      }
+    });
+
+    return NextResponse.json(updatedVenue);
   } catch (error) {
     console.error('Error updating venue:', error);
     return NextResponse.json(
@@ -128,57 +149,45 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(params.id);
-    
-    // Verify authentication
+    // First verify basic authentication
     const user = await verifyAuth(request);
     if (!user) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get venue to check entity ownership
-    const existingVenue = await prisma.venue.findUnique({
-      where: { id },
-      select: { entity_id: true }
-    });
-
-    if (!existingVenue) {
-      return NextResponse.json({ message: 'Venue not found' }, { status: 404 });
+    const id = parseInt(params.id);
+    if (isNaN(id)) {
+      return NextResponse.json({ message: 'Invalid venue ID' }, { status: 400 });
     }
 
-    // Check if user has admin role for this venue's entity
-    const hasAdminRole = user.entityMembers.some(
-      membership => 
-        membership.entity.id === existingVenue.entity_id && 
-        membership.entityRole.name === 'Admin'
-    );
-    
-    if (!hasAdminRole) {
+    // Check if user has general permission to delete venues
+    const authResult = await requirePermission('delete', '/api/venues')(request);
+    if ('isAuthorized' in authResult === false) {
+      return NextResponse.json({ message: 'Permission denied' }, { status: 403 });
+    }
+
+    // Check if user has access to this specific venue through entity membership
+    const hasAccess = await hasVenueAccess(user.id, id);
+    if (!hasAccess) {
       return NextResponse.json(
-        { message: 'Only entity admins can delete venues' },
+        { message: 'You do not have permission to delete this venue' },
         { status: 403 }
-      );
-    }
-
-    // Check if venue has any bookings
-    const bookings = await prisma.venueBooking.findMany({
-      where: { 
-        venue_id: id,
-        status: { in: ['pending', 'approved'] }
-      },
-      take: 1
-    });
-
-    if (bookings.length > 0) {
-      return NextResponse.json(
-        { message: 'Cannot delete venue with active bookings' },
-        { status: 409 }
       );
     }
 
     // Delete venue
     await prisma.venue.delete({
       where: { id }
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        user_id: user.id,
+        entity_type: 'venue',
+        entity_id: id,
+        action: 'delete_venue'
+      }
     });
 
     return NextResponse.json({ message: 'Venue deleted successfully' });

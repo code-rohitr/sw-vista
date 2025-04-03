@@ -1,94 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import bcrypt from 'bcrypt';
+import { verifyAuth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import { requirePermission } from '@/middleware/roleCheck';
 import { isSystemAdmin } from '@/lib/auth';
 
-// Get all users
+// Define the query type
+type UserQuery = {
+  include: {
+    entityMembers: {
+      include: {
+        entity: {
+          include: {
+            entityType: true;
+          };
+        };
+        entityRole: {
+          include: {
+            template: true;
+            entityRolePermissions: {
+              include: {
+                permission: true;
+                resource: true;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  orderBy: {
+    created_at: 'desc';
+  };
+};
+
+// GET /api/users - Get all users
 export async function GET(request: NextRequest) {
   try {
-    // Check if user has permission to view users
-    const authResult = await requirePermission('view', '/api/users')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      console.log(user,"user")
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const users = await prisma.users.findMany({
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        entityMembers: {
-          include: {
-            entity: {
-              include: {
-                entityType: true,
-              },
-            },
-            entityRole: {
-              include: {
-                entityRolePermissions: {
-                  include: {
-                    permission: true,
-                    resource: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return NextResponse.json(users);
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    return NextResponse.json(
-      { message: 'Failed to fetch users' },
-      { status: 500 }
-    );
-  }
-}
-
-// Create a new user
-export async function POST(request: NextRequest) {
-  try {
-    const data = await request.json();
-    const { username, email, password, entity_id, entity_role_id } = data;
-
-    console.log(data);
-    
-    if (!username || !email || !password || !entity_id || !entity_role_id) {
-      return NextResponse.json({ 
-        error: 'Username, email, password, entity, and role are required' 
-      }, { status: 400 });
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
+      return NextResponse.json(
+        { message: 'Only System Admins can view all users' },
+        { status: 403 }
+      );
     }
-    
-    // Hash the password
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-    
-    // Create the user
-    const user = await prisma.users.create({
-      data: {
-        username,
-        email,
-        password_hash: hashedPassword,
-      },
-    });
-    
-    // Create entity membership
-    await prisma.entityMembers.create({
-      data: {
-        user_id: user.id,
-        entity_id: entity_id,
-        entity_role_id: entity_role_id,
-      },
-    });
-    
-    // Fetch the complete user with relationships
-    const completeUser = await prisma.users.findUnique({
-      where: { id: user.id },
+
+    // Build query
+    const query: UserQuery = {
       include: {
         entityMembers: {
           include: {
@@ -99,6 +65,111 @@ export async function POST(request: NextRequest) {
             },
             entityRole: {
               include: {
+                template: true,
+                entityRolePermissions: {
+                  include: {
+                    permission: true,
+                    resource: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' }
+    };
+
+    // Get all users
+    const users = await prisma.users.findMany(query);
+
+    // Remove password_hash from response
+    const usersWithoutPassword = users.map(({ password_hash, ...user }) => user);
+
+    return NextResponse.json(usersWithoutPassword);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    return NextResponse.json(
+      { message: 'Failed to fetch users' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/users - Create a new user
+export async function POST(request: NextRequest) {
+  try {
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
+      return NextResponse.json(
+        { message: 'Only System Admins can create users' },
+        { status: 403 }
+      );
+    }
+
+    // Get request body
+    const { username, password, email } = await request.json();
+
+    // Validate input
+    if (!username || !password || !email) {
+      return NextResponse.json(
+        { message: 'Username, password, and email are required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if username already exists
+    const existingUser = await prisma.users.findUnique({
+      where: { username },
+    });
+
+    if (existingUser) {
+      return NextResponse.json(
+        { message: 'Username already exists' },
+        { status: 400 }
+      );
+    }
+
+    // Check if email already exists
+    const existingEmail = await prisma.users.findUnique({
+      where: { email },
+    });
+
+    if (existingEmail) {
+      return NextResponse.json(
+        { message: 'Email already exists' },
+        { status: 400 }
+      );
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
+
+    // Create user
+    const newUser = await prisma.users.create({
+      data: {
+        username,
+        password_hash,
+        email,
+      },
+      include: {
+        entityMembers: {
+          include: {
+            entity: {
+              include: {
+                entityType: true,
+              },
+            },
+            entityRole: {
+              include: {
+                template: true,
                 entityRolePermissions: {
                   include: {
                     permission: true,
@@ -112,212 +183,155 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Check if the user is a System Admin
-    const isAdmin = await isSystemAdmin(user.id);
-    
-    return NextResponse.json(completeUser, { status: 201 });
+    // Remove password_hash from response
+    const { password_hash: _, ...userWithoutPassword } = newUser;
+
+    return NextResponse.json(userWithoutPassword, { status: 201 });
   } catch (error) {
     console.error('Error creating user:', error);
-    return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
+    return NextResponse.json(
+      { message: 'Failed to create user' },
+      { status: 500 }
+    );
   }
 }
 
-// Update a user
-export async function PUT(request: NextRequest) {
+// PUT /api/users/:id - Update a user
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Check if user has permission to update users
-    const authResult = await requirePermission('update', '/api/users')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { id, username, email, password, entity_id, entity_role_id } = body;
-
-    if (!id) {
+    // Check if user is System Admin or updating their own profile
+    if (!user.isSystemAdmin && user.id !== params.id) {
       return NextResponse.json(
-        { message: 'User ID is required' },
-        { status: 400 }
+        { message: 'You can only update your own profile' },
+        { status: 403 }
       );
     }
 
-    // Check if user exists
-    const existingUser = await prisma.users.findUnique({
-      where: { id },
-    });
+    // Get request body
+    const { email, password } = await request.json();
 
-    if (!existingUser) {
-      return NextResponse.json(
-        { message: 'User not found' },
-        { status: 404 }
-      );
-    }
+    // Build update data
+    const updateData: Prisma.usersUpdateInput = {
+      email,
+    };
 
-    // Prepare update data
-    const updateData: any = {};
-    if (username) updateData.username = username;
-    if (email) updateData.email = email;
+    // Update password if provided
     if (password) {
-      const saltRounds = 10;
-      updateData.password_hash = await bcrypt.hash(password, saltRounds);
+      const salt = await bcrypt.genSalt(10);
+      updateData.password_hash = await bcrypt.hash(password, salt);
     }
 
-    // Update user and entity membership in a transaction
-    const updatedUser = await prisma.$transaction(async (tx) => {
-      // Update user
-      const user = await tx.users.update({
-        where: { id },
-        data: updateData,
-      });
-
-      // Update entity membership if provided
-      if (entity_id && entity_role_id) {
-        // Check if entity exists
-        const entity = await tx.entity.findUnique({
-          where: { id: entity_id },
-        });
-
-        if (!entity) {
-          throw new Error('Entity not found');
-        }
-
-        // Check if entity role exists and belongs to the entity
-        const entityRole = await tx.entityRoles.findUnique({
-          where: { id: entity_role_id },
-        });
-
-        if (!entityRole || entityRole.entity_id !== entity_id) {
-          throw new Error('Invalid entity role');
-        }
-
-        // Update or create entity membership
-        await tx.entityMembers.upsert({
-          where: {
-            entity_id_user_id: {
-              entity_id,
-              user_id: id,
-            },
-          },
-          update: {
-            entity_role_id,
-          },
-          create: {
-            entity_id,
-            user_id: id,
-            entity_role_id,
-          },
-        });
-      }
-
-      // Return user with relationships
-      const updatedUser = await tx.users.findUnique({
-        where: { id },
-        include: {
-          entityMembers: {
-            include: {
-              entity: {
-                include: {
-                  entityType: true,
-                },
+    // Update user
+    const updatedUser = await prisma.users.update({
+      where: { id: params.id },
+      data: updateData,
+      include: {
+        entityMembers: {
+          include: {
+            entity: {
+              include: {
+                entityType: true,
               },
-              entityRole: {
-                include: {
-                  entityRolePermissions: {
-                    include: {
-                      permission: true,
-                      resource: true,
-                    },
+            },
+            entityRole: {
+              include: {
+                template: true,
+                entityRolePermissions: {
+                  include: {
+                    permission: true,
+                    resource: true,
                   },
                 },
               },
             },
           },
         },
-      });
-
-      // Check if the user is a System Admin
-      const isAdmin = await isSystemAdmin(id);
-
-      return {
-        ...updatedUser,
-        isSystemAdmin: isAdmin,
-      };
+      },
     });
 
-    if (!updatedUser) {
-      throw new Error('Failed to update user');
-    }
-
-    // Remove password from response
+    // Remove password_hash from response
     const { password_hash: _, ...userWithoutPassword } = updatedUser;
-
-    // Log this action
-    await prisma.auditLog.create({
-      data: {
-        user_id: authResult.user.id,
-        entity_type: 'user',
-        entity_id: id,
-        action: 'update_user',
-      }
-    });
 
     return NextResponse.json(userWithoutPassword);
   } catch (error) {
     console.error('Error updating user:', error);
     return NextResponse.json(
-      { message: error instanceof Error ? error.message : 'Error updating user' },
+      { message: 'Failed to update user' },
       { status: 500 }
     );
   }
 }
 
-// Delete a user
-export async function DELETE(request: NextRequest) {
+// DELETE /api/users/:id - Delete a user
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Check if user has permission to delete users
-    const authResult = await requirePermission('delete', '/api/users')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const url = new URL(request.url);
-    const id = parseInt(url.searchParams.get('id') || '');
-
-    if (!id) {
+    // Check if user is System Admin
+    if (!user.isSystemAdmin) {
       return NextResponse.json(
-        { message: 'User ID is required' },
+        { message: 'Only System Admins can delete users' },
+        { status: 403 }
+      );
+    }
+
+    // Check if user is trying to delete themselves
+    if (user.id === params.id) {
+      return NextResponse.json(
+        { message: 'Cannot delete your own account' },
         { status: 400 }
       );
     }
 
     // Delete user and related records in a transaction
     await prisma.$transaction(async (tx) => {
-      // Delete entity memberships
+      // Delete all entity memberships
       await tx.entityMembers.deleteMany({
-        where: { user_id: id },
+        where: { user_id: params.id }
       });
 
-      // Delete user
+      // Delete all user sessions
+      await tx.userSession.deleteMany({
+        where: { user_id: params.id }
+      });
+
+      // Delete all audit logs
+      await tx.auditLog.deleteMany({
+        where: { user_id: params.id }
+      });
+
+      // Delete all API usage records
+      await tx.apiUsage.deleteMany({
+        where: { user_id: params.id }
+      });
+
+      // Delete the user
       await tx.users.delete({
-        where: { id },
+        where: { id: params.id }
       });
-    });
-
-    // Log this action
-    await prisma.auditLog.create({
-      data: {
-        user_id: authResult.user.id,
-        entity_type: 'user',
-        entity_id: id,
-        action: 'delete_user',
-      }
     });
 
     return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {
     console.error('Error deleting user:', error);
     return NextResponse.json(
-      { message: 'Error deleting user' },
+      { message: 'Failed to delete user' },
       { status: 500 }
     );
   }

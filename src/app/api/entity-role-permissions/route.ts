@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/middleware/roleCheck';
+import { Prisma } from '@prisma/client';
+
+// Define the query type
+type EntityRolePermissionQuery = {
+  include: {
+    entityRole: {
+      include: {
+        entityType: true;
+      };
+    };
+    permission: true;
+    resource: true;
+  };
+  where?: {
+    entity_role_id: string;
+  };
+};
 
 /**
  * GET /api/entity-role-permissions
@@ -19,7 +36,7 @@ export async function GET(request: NextRequest) {
     const entityRoleId = url.searchParams.get('entityRoleId');
 
     // Build query
-    const query: any = {
+    const query: EntityRolePermissionQuery = {
       include: {
         entityRole: {
           include: {
@@ -34,7 +51,7 @@ export async function GET(request: NextRequest) {
     // Add entity role filter if provided
     if (entityRoleId) {
       query.where = {
-        entity_role_id: parseInt(entityRoleId),
+        entity_role_id: entityRoleId,
       };
     }
 
@@ -112,13 +129,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if entity role permission already exists
-    const existingEntityRolePermission = await prisma.entityRolePermissions.findUnique({
+    const existingEntityRolePermission = await prisma.entityRolePermissions.findFirst({
       where: {
-        entity_role_id_permission_id_resource_id: {
-          entity_role_id,
-          permission_id,
-          resource_id,
-        },
+        entity_role_id,
+        permission_id,
+        resource_id,
       },
     });
 
@@ -135,6 +150,15 @@ export async function POST(request: NextRequest) {
         entity_role_id,
         permission_id,
         resource_id,
+      },
+      include: {
+        entityRole: {
+          include: {
+            entityType: true,
+          },
+        },
+        permission: true,
+        resource: true,
       },
     });
 
@@ -188,13 +212,11 @@ export async function DELETE(request: NextRequest) {
 
     // If permissionId and resourceId are provided, delete specific permission
     if (permissionId && resourceId) {
-      const entityRolePermission = await prisma.entityRolePermissions.findUnique({
+      const entityRolePermission = await prisma.entityRolePermissions.findFirst({
         where: {
-          entity_role_id_permission_id_resource_id: {
-            entity_role_id: parseInt(entityRoleId),
-            permission_id: parseInt(permissionId),
-            resource_id: parseInt(resourceId),
-          },
+          entity_role_id: entityRoleId,
+          permission_id: permissionId,
+          resource_id: resourceId,
         },
       });
 
@@ -228,7 +250,7 @@ export async function DELETE(request: NextRequest) {
     // If only entityRoleId is provided, delete all permissions for that role
     const deletedPermissions = await prisma.entityRolePermissions.deleteMany({
       where: {
-        entity_role_id: parseInt(entityRoleId),
+        entity_role_id: entityRoleId,
       },
     });
 
@@ -237,7 +259,7 @@ export async function DELETE(request: NextRequest) {
       data: {
         user_id: authResult.user.id,
         entity_type: 'entity_role',
-        entity_id: parseInt(entityRoleId),
+        entity_id: entityRoleId,
         action: 'delete_all_entity_role_permissions',
       },
     });

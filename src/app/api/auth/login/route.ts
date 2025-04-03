@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyCredentials, generateToken, isSystemAdmin } from '@/lib/auth';
+import { verifyCredentials } from '@/lib/auth';
+import { generateToken } from '@/lib/jwt';
+import { cookies } from 'next/headers';
 
 interface EntityRolePermission {
   permission: {
@@ -12,22 +14,22 @@ interface EntityRolePermission {
 }
 
 interface EntityRole {
-  id: number;
+  id: string;
   name: string;
   entityRolePermissions: EntityRolePermission[];
 }
 
 interface Entity {
-  id: number;
+  id: string;
   name: string;
   entityType: {
-    id: number;
+    id: string;
     name: string;
   };
 }
 
 interface EntityMembership {
-  id: number;
+  id: string;
   entity: Entity;
   entityRole: EntityRole;
 }
@@ -46,38 +48,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user is System Admin
-    const isAdmin = await isSystemAdmin(user.id);
-
-    // Get all entity memberships
-    const entityMemberships = await prisma.entityMembers.findMany({
-      where: {
-        user_id: user.id,
-      },
-      include: {
-        entity: {
-          include: {
-            entityType: true,
-          },
-        },
-        entityRole: {
-          include: {
-            entityRolePermissions: {
-              include: {
-                permission: true,
-                resource: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // Generate JWT token with user info and admin status
+    // Generate JWT token with admin status
     const token = generateToken({
       id: user.id,
       username: user.username,
-      isSystemAdmin: isAdmin,
+      isSystemAdmin: user.isSystemAdmin
     });
 
     // Log successful login
@@ -85,56 +60,32 @@ export async function POST(request: NextRequest) {
       data: {
         user_id: user.id,
         entity_type: 'auth',
-        entity_id: user.id,
         action: 'LOGIN',
-      },
+        details: { username: user.username }
+      }
     });
 
-    // Extract permissions for the frontend
-    const permissions: Record<string, string[]> = {};
-
-    // Add entity role permissions
-    entityMemberships.forEach((membership: EntityMembership) => {
-      membership.entityRole.entityRolePermissions.forEach((erp: EntityRolePermission) => {
-        const resourceName = erp.resource.name;
-        const permissionName = erp.permission.name;
-        
-        if (!permissions[resourceName]) {
-          permissions[resourceName] = [];
-        }
-        
-        if (!permissions[resourceName].includes(permissionName)) {
-          permissions[resourceName].push(permissionName);
-        }
-      });
-    });
-
-    // If user is System Admin, they have all permissions
-    if (isAdmin) {
-      const allResources = await prisma.resources.findMany();
-      const allPermissions = await prisma.permissions.findMany();
-      
-      allResources.forEach(resource => {
-        permissions[resource.name] = allPermissions.map(p => p.name);
-      });
-    }
-
-    // Return user data, token, and permissions
-    return NextResponse.json({
+    // Create the response
+    const response = NextResponse.json({ 
       user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        isSystemAdmin: isAdmin,
-        entityMembers: entityMemberships.map((em: EntityMembership) => ({
-          id: em.id,
-          entity: em.entity,
-          entityRole: em.entityRole,
-        })),
-      },
-      permissions,
-      token,
+        ...user,
+        isSystemAdmin: user.isSystemAdmin
+      }, 
+      token 
     });
+
+    // Set the token as a cookie
+    response.cookies.set({
+      name: 'auth_token',
+      value: token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 // 24 hours
+    });
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

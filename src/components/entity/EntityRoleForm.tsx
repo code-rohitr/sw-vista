@@ -1,159 +1,208 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/components/ui/use-toast';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from 'sonner';
 
-interface EntityRoleFormProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (data: any) => Promise<void>;
-  initialData?: any;
-  isEditMode?: boolean;
+interface RoleTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  permissions: string;
 }
 
-export default function EntityRoleForm({ isOpen, onClose, onSubmit, initialData, isEditMode = false }: EntityRoleFormProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [entityTypeId, setEntityTypeId] = useState<number | ''>('');
-  const [entityTypes, setEntityTypes] = useState<any[]>([]);
+interface EntityRole {
+  id: number;
+  name: string;
+  description?: string;
+  entity_id: number;
+  entity_type_id: number;
+  template_id?: number;
+  template?: RoleTemplate;
+}
+
+interface EntityRoleFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (data: any) => void;
+  entityId: number;
+  initialData?: EntityRole | null;
+}
+
+export function EntityRoleForm({
+  open,
+  onOpenChange,
+  onSubmit,
+  entityId,
+  initialData,
+}: EntityRoleFormProps) {
+  const { hasPermission } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  
-  const { toast } = useToast();
+  const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    template_id: '',
+  });
 
   useEffect(() => {
-    // Reset form when dialog opens/closes or initialData changes
-    if (isOpen) {
+    if (open) {
+      fetchRoleTemplates();
       if (initialData) {
-        setName(initialData.name || '');
-        setDescription(initialData.description || '');
-        setEntityTypeId(initialData.entity_type_id || '');
+        setFormData({
+          name: initialData.name,
+          description: initialData.description || '',
+          template_id: initialData.template_id?.toString() || '',
+        });
       } else {
-        setName('');
-        setDescription('');
-        setEntityTypeId('');
+        setFormData({
+          name: '',
+          description: '',
+          template_id: '',
+        });
       }
-      
-      // Fetch entity types
-      fetchEntityTypes();
     }
-  }, [isOpen, initialData]);
+  }, [open, initialData]);
 
-  const fetchEntityTypes = async () => {
+  const fetchRoleTemplates = async () => {
     try {
-      setIsLoading(true);
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('Not authenticated');
-
-      const response = await fetch('/api/entity-types', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch entity types');
+      const response = await fetch('/api/role-templates');
+      if (!response.ok) {
+        throw new Error('Failed to fetch role templates');
+      }
       const data = await response.json();
-      setEntityTypes(data);
+      setRoleTemplates(data);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive',
-      });
+      console.error('Error fetching role templates:', error);
+      toast.error('Failed to load role templates');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const data = {
+        name: formData.name,
+        description: formData.description,
+        entity_id: entityId,
+        template_id: formData.template_id ? parseInt(formData.template_id) : null,
+      };
+
+      onSubmit(data);
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      toast.error('Failed to save entity role');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSubmit = async () => {
-    if (!name || !entityTypeId) {
-      toast({
-        title: 'Error',
-        description: 'Please fill in all required fields',
-        variant: 'destructive',
-      });
-      return;
-    }
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-    try {
-      setIsLoading(true);
-      await onSubmit({
-        name,
-        description,
-        entity_type_id: entityTypeId
-      });
-      onClose();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+  const handleTemplateChange = (templateId: string) => {
+    setFormData((prev) => ({ ...prev, template_id: templateId }));
+    if (templateId) {
+      const template = roleTemplates.find((t) => t.id.toString() === templateId);
+      if (template) {
+        setFormData((prev) => ({
+          ...prev,
+          name: template.name,
+          description: template.description || '',
+        }));
+      }
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEditMode ? 'Edit Entity Role' : 'Create New Entity Role'}</DialogTitle>
-          <DialogDescription>
-            {isEditMode
-              ? 'Update entity role information.'
-              : 'Fill in the details to create a new entity role.'}
-          </DialogDescription>
+          <DialogTitle>
+            {initialData ? 'Edit Entity Role' : 'Create Entity Role'}
+          </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="template_id">Role Template</Label>
+            <Select
+              value={formData.template_id}
+              onValueChange={handleTemplateChange}
+            >
+              <SelectTrigger disabled={isLoading}>
+                <SelectValue placeholder="Select role template" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {roleTemplates.map((template) => (
+                  <SelectItem key={template.id} value={template.id.toString()}>
+                    {template.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter role name"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+              disabled={isLoading || !!formData.template_id}
             />
+            {!formData.name && (
+              <p className="text-sm text-red-500">Name is required</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter role description"
-              rows={4}
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              disabled={isLoading || !!formData.template_id}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="entityType">Entity Type</Label>
-            <select
-              id="entityType"
-              value={entityTypeId}
-              onChange={(e) => setEntityTypeId(e.target.value ? parseInt(e.target.value) : '')}
-              className="w-full p-2 border rounded"
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isLoading}
             >
-              <option value="">Select Entity Type</option>
-              {entityTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? 'Saving...' : initialData ? 'Update' : 'Create'}
+            </Button>
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isLoading}>
-            {isEditMode ? 'Update' : 'Create'}
-          </Button>
-        </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -1,376 +1,826 @@
 const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
 
+async function clearData() {
+  const tablenames = await prisma.$queryRaw`
+    SELECT tablename FROM pg_tables WHERE schemaname='public'
+  `;
+
+  for (const { tablename } of tablenames) {
+    if (tablename !== '_prisma_migrations') {
+      try {
+        await prisma.$executeRawUnsafe(`TRUNCATE TABLE "public"."${tablename}" CASCADE;`);
+      } catch (error) {
+        console.log({ error });
+      }
+    }
+  }
+}
+
+async function hashPassword(password) {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(password, salt);
+}
+
 async function main() {
-  console.log('Starting seed...');
+  console.log('Start seeding...');
 
-  // Truncate all tables (in reverse order of dependencies)
-  console.log('Truncating all tables...');
-  await prisma.$executeRaw`TRUNCATE TABLE "VenueBookings" CASCADE;`;
-  await prisma.$executeRaw`TRUNCATE TABLE "Venues" CASCADE;`;
-  await prisma.$executeRaw`TRUNCATE TABLE "EntityMembers" CASCADE;`;
-  await prisma.$executeRaw`TRUNCATE TABLE "EntityRoles" CASCADE;`;
-  await prisma.$executeRaw`TRUNCATE TABLE "Entities" CASCADE;`;
-  await prisma.$executeRaw`TRUNCATE TABLE "Users" CASCADE;`;
-  await prisma.$executeRaw`TRUNCATE TABLE "UserRoles" CASCADE;`;
-  console.log('All tables truncated successfully.');
+  await clearData();
 
-  // Create roles
-  const godmodeRole = await prisma.userRoles.upsert({
-    where: { role_name: 'godmode' },
-    update: {
-      permissions: ['all', 'create_user', 'delete_user', 'manage_roles', 'manage_permissions', 'create_venue', 'delete_venue', 'edit_venue'],
-    },
-    create: {
-      role_name: 'godmode',
-      permissions: ['all', 'create_user', 'delete_user', 'manage_roles', 'manage_permissions', 'create_venue', 'delete_venue', 'edit_venue'],
-    },
-  });
-
-  const editorRole = await prisma.userRoles.upsert({
-    where: { role_name: 'editor' },
-    update: {},
-    create: {
-      role_name: 'editor',
-      permissions: ['read', 'write', 'edit'],
-    },
-  });
-
-  const viewerRole = await prisma.userRoles.upsert({
-    where: { role_name: 'viewer' },
-    update: {},
-    create: {
-      role_name: 'viewer',
-      permissions: ['read'],
-    },
-  });
-
-  console.log('Created roles:', { godmodeRole, editorRole, viewerRole });
-
-  // Create entity roles
-  const adminEntityRole = await prisma.entityRoles.create({
+  // Create admin user
+  const adminUser = await prisma.users.create({
     data: {
-      name: 'Admin',
-      permissions: ['manage_entity', 'approve_bookings', 'manage_members'],
-    },
+      username: 'admin',
+      email: 'admin@example.com',
+      password_hash: await hashPassword('admin123')
+    }
   });
 
-  const memberEntityRole = await prisma.entityRoles.create({
-    data: {
-      name: 'Member',
-      permissions: ['create_bookings', 'view_bookings'],
-    },
-  });
+  console.log('Created admin user');
 
-  console.log('Created entity roles:', { adminEntityRole, memberEntityRole });
-
-  // Hash passwords
-  const saltRounds = 10;
-  const adminPassword = await bcrypt.hash('admin123', saltRounds);
-  const userPassword = await bcrypt.hash('user123', saltRounds);
-
-  // Create users
-  const godmodeUser = await prisma.users.upsert({
-    where: { username: 'godmode_admin' },
-    update: { password_hash: adminPassword },
-    create: {
-      username: 'godmode_admin',
-      email: 'admin@swvista.com',
-      password_hash: adminPassword,
-      role: 'godmode',
-    },
-  });
-
-  const users = await Promise.all([
-    prisma.users.create({
+  // Create entity types
+  const entityTypes = await Promise.all([
+    prisma.entityTypes.create({
       data: {
-        username: 'john_doe',
-        email: 'john@example.com',
-        password_hash: userPassword,
-        role: 'editor',
-      },
+        name: 'Club',
+        description: 'Student organizations and clubs'
+      }
     }),
-    prisma.users.create({
+    prisma.entityTypes.create({
       data: {
-        username: 'jane_smith',
-        email: 'jane@example.com',
-        password_hash: userPassword,
-        role: 'editor',
-      },
+        name: 'Security',
+        description: 'Security and safety departments'
+      }
     }),
-    prisma.users.create({
+    prisma.entityTypes.create({
       data: {
-        username: 'bob_viewer',
-        email: 'bob@example.com',
-        password_hash: userPassword,
-        role: 'viewer',
-      },
+        name: 'Directors',
+        description: 'Department directors and managers'
+      }
     }),
-    prisma.users.create({
+    prisma.entityTypes.create({
       data: {
-        username: 'alice_editor',
-        email: 'alice@example.com',
-        password_hash: userPassword,
-        role: 'editor',
-      },
+        name: 'Faculty Advisors',
+        description: 'Faculty members advising student organizations'
+      }
     }),
+    prisma.entityTypes.create({
+      data: {
+        name: 'Venue',
+        description: 'Physical locations and spaces'
+      }
+    })
   ]);
 
-  console.log('Created users:', [godmodeUser, ...users].map(u => ({ id: u.id, username: u.username })));
+  console.log('Created entity types');
+
+  // Create permissions
+  const permissions = await Promise.all([
+    // Club permissions
+    prisma.permissions.create({
+      data: {
+        name: 'manage_club',
+        description: 'Manage club operations',
+        action: 'manage',
+        scope: 'club',
+        resource_type: 'club',
+        created_by: adminUser.id
+      }
+    }),
+    prisma.permissions.create({
+      data: {
+        name: 'view_club',
+        description: 'View club details',
+        action: 'view',
+        scope: 'club',
+        resource_type: 'club',
+        created_by: adminUser.id
+      }
+    }),
+    // Security permissions
+    prisma.permissions.create({
+      data: {
+        name: 'manage_security',
+        description: 'Manage security operations',
+        action: 'manage',
+        scope: 'security',
+        resource_type: 'security',
+        created_by: adminUser.id
+      }
+    }),
+    prisma.permissions.create({
+      data: {
+        name: 'view_security',
+        description: 'View security details',
+        action: 'view',
+        scope: 'security',
+        resource_type: 'security',
+        created_by: adminUser.id
+      }
+    }),
+    // Director permissions
+    prisma.permissions.create({
+      data: {
+        name: 'manage_department',
+        description: 'Manage department operations',
+        action: 'manage',
+        scope: 'department',
+        resource_type: 'department',
+        created_by: adminUser.id
+      }
+    }),
+    prisma.permissions.create({
+      data: {
+        name: 'view_department',
+        description: 'View department details',
+        action: 'view',
+        scope: 'department',
+        resource_type: 'department',
+        created_by: adminUser.id
+      }
+    }),
+    // Faculty permissions
+    prisma.permissions.create({
+      data: {
+        name: 'advise_club',
+        description: 'Advise student organizations',
+        action: 'advise',
+        scope: 'club',
+        resource_type: 'club',
+        created_by: adminUser.id
+      }
+    }),
+    prisma.permissions.create({
+      data: {
+        name: 'view_advisee',
+        description: 'View advisee details',
+        action: 'view',
+        scope: 'advisee',
+        resource_type: 'advisee',
+        created_by: adminUser.id
+      }
+    }),
+    // Venue permissions
+    prisma.permissions.create({
+      data: {
+        name: 'manage_venue',
+        description: 'Manage venue operations',
+        action: 'manage',
+        scope: 'venue',
+        resource_type: 'venue',
+        created_by: adminUser.id
+      }
+    }),
+    prisma.permissions.create({
+      data: {
+        name: 'book_venue',
+        description: 'Book venues',
+        action: 'book',
+        scope: 'venue',
+        resource_type: 'venue',
+        created_by: adminUser.id
+      }
+    })
+  ]);
+
+  console.log('Created permissions');
+
+  // Create resources
+  const resources = await Promise.all([
+    prisma.resources.create({
+      data: {
+        name: 'club',
+        path: '/api/clubs',
+        description: 'Club management endpoints'
+      }
+    }),
+    prisma.resources.create({
+      data: {
+        name: 'security',
+        path: '/api/security',
+        description: 'Security management endpoints'
+      }
+    }),
+    prisma.resources.create({
+      data: {
+        name: 'department',
+        path: '/api/departments',
+        description: 'Department management endpoints'
+      }
+    }),
+    prisma.resources.create({
+      data: {
+        name: 'faculty',
+        path: '/api/faculty',
+        description: 'Faculty management endpoints'
+      }
+    }),
+    prisma.resources.create({
+      data: {
+        name: 'venue',
+        path: '/api/venues',
+        description: 'Venue management endpoints'
+      }
+    })
+  ]);
+
+  console.log('Created resources');
+
+  // Create permission resources
+  await Promise.all([
+    // Club permissions
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[0].id,
+        resource_id: resources[0].id
+      }
+    }),
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[1].id,
+        resource_id: resources[0].id
+      }
+    }),
+    // Security permissions
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[2].id,
+        resource_id: resources[1].id
+      }
+    }),
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[3].id,
+        resource_id: resources[1].id
+      }
+    }),
+    // Director permissions
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[4].id,
+        resource_id: resources[2].id
+      }
+    }),
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[5].id,
+        resource_id: resources[2].id
+      }
+    }),
+    // Faculty permissions
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[6].id,
+        resource_id: resources[3].id
+      }
+    }),
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[7].id,
+        resource_id: resources[3].id
+      }
+    }),
+    // Venue permissions
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[8].id,
+        resource_id: resources[4].id
+      }
+    }),
+    prisma.permissionResources.create({
+      data: {
+        permission_id: permissions[9].id,
+        resource_id: resources[4].id
+      }
+    })
+  ]);
+
+  console.log('Created permission resources');
+
+  // Create role templates
+  const roleTemplates = await Promise.all([
+    // Club roles
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Club President',
+        description: 'Leads and manages the club'
+      }
+    }),
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Club Member',
+        description: 'Regular club member'
+      }
+    }),
+    // Security roles
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Security Chief',
+        description: 'Head of security operations'
+      }
+    }),
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Security Officer',
+        description: 'Security personnel'
+      }
+    }),
+    // Director roles
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Department Director',
+        description: 'Manages department operations'
+      }
+    }),
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Department Manager',
+        description: 'Assists in department management'
+      }
+    }),
+    // Faculty roles
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Senior Advisor',
+        description: 'Experienced faculty advisor'
+      }
+    }),
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Junior Advisor',
+        description: 'New faculty advisor'
+      }
+    }),
+    // Venue roles
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Venue Manager',
+        description: 'Manages venue operations'
+      }
+    }),
+    prisma.roleTemplate.create({
+      data: {
+        name: 'Venue Staff',
+        description: 'Assists in venue operations'
+      }
+    })
+  ]);
+
+  console.log('Created role templates');
+
+  // Create role template versions
+  await Promise.all(roleTemplates.map((template, index) => 
+    prisma.roleTemplateVersion.create({
+      data: {
+        template_id: template.id,
+        version_number: 1,
+        changes: { initial: true },
+        permissions: {
+          create: index % 2 === 0,
+          read: true,
+          update: index % 2 === 0,
+          delete: false
+        },
+        created_by: adminUser.id
+      }
+    })
+  ));
+
+  console.log('Created role template versions');
 
   // Create entities
   const entities = await Promise.all([
-    prisma.entities.create({
+    // Clubs
+    prisma.entity.create({
       data: {
-        name: 'Engineering Department',
-        description: 'Department responsible for engineering activities',
-      },
+        name: 'Computer Science Club',
+        description: 'Student organization for computer science enthusiasts',
+        entityType_id: entityTypes[0].id
+      }
     }),
-    prisma.entities.create({
+    prisma.entity.create({
       data: {
-        name: 'Marketing Team',
-        description: 'Team responsible for marketing and promotions',
-      },
+        name: 'Robotics Club',
+        description: 'Student organization for robotics enthusiasts',
+        entityType_id: entityTypes[0].id
+      }
     }),
-    prisma.entities.create({
+    // Security
+    prisma.entity.create({
       data: {
-        name: 'HR Department',
-        description: 'Human Resources department',
-      },
+        name: 'Campus Security',
+        description: 'Main campus security department',
+        entityType_id: entityTypes[1].id
+      }
     }),
-    prisma.entities.create({
+    prisma.entity.create({
       data: {
-        name: 'Finance Department',
-        description: 'Department handling financial matters',
-      },
+        name: 'Event Security',
+        description: 'Security team for special events',
+        entityType_id: entityTypes[1].id
+      }
     }),
-    prisma.entities.create({
+    // Directors
+    prisma.entity.create({
       data: {
-        name: 'Executive Committee',
-        description: 'Top-level decision making committee',
-      },
+        name: 'Student Affairs',
+        description: 'Student affairs department',
+        entityType_id: entityTypes[2].id
+      }
     }),
+    prisma.entity.create({
+      data: {
+        name: 'Academic Affairs',
+        description: 'Academic affairs department',
+        entityType_id: entityTypes[2].id
+      }
+    }),
+    // Faculty Advisors
+    prisma.entity.create({
+      data: {
+        name: 'Engineering Faculty',
+        description: 'Engineering department faculty advisors',
+        entityType_id: entityTypes[3].id
+      }
+    }),
+    prisma.entity.create({
+      data: {
+        name: 'Science Faculty',
+        description: 'Science department faculty advisors',
+        entityType_id: entityTypes[3].id
+      }
+    }),
+    // Venues
+    prisma.entity.create({
+      data: {
+        name: 'Main Auditorium',
+        description: 'Large event space for major gatherings',
+        entityType_id: entityTypes[4].id
+      }
+    }),
+    prisma.entity.create({
+      data: {
+        name: 'Conference Room A',
+        description: 'Medium-sized meeting space',
+        entityType_id: entityTypes[4].id
+      }
+    })
   ]);
 
-  console.log('Created entities:', entities.map(e => ({ id: e.id, name: e.name })));
+  console.log('Created entities');
 
-  // Assign users to entities with roles
-  const entityMembers = await Promise.all([
-    // John is admin of Engineering
-    prisma.entityMembers.create({
+  // Create users
+  const users = await Promise.all([
+    // Club users
+    prisma.users.create({
       data: {
-        user_id: users[0].id,
+        username: 'cs_president',
+        email: 'cs_president@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    prisma.users.create({
+      data: {
+        username: 'cs_member',
+        email: 'cs_member@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    // Security users
+    prisma.users.create({
+      data: {
+        username: 'security_chief',
+        email: 'security_chief@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    prisma.users.create({
+      data: {
+        username: 'security_officer',
+        email: 'security_officer@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    // Director users
+    prisma.users.create({
+      data: {
+        username: 'student_director',
+        email: 'student_director@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    prisma.users.create({
+      data: {
+        username: 'academic_director',
+        email: 'academic_director@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    // Faculty users
+    prisma.users.create({
+      data: {
+        username: 'eng_advisor',
+        email: 'eng_advisor@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    prisma.users.create({
+      data: {
+        username: 'sci_advisor',
+        email: 'sci_advisor@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    // Venue users
+    prisma.users.create({
+      data: {
+        username: 'venue_manager',
+        email: 'venue_manager@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    }),
+    prisma.users.create({
+      data: {
+        username: 'venue_staff',
+        email: 'venue_staff@example.com',
+        password_hash: await hashPassword('password123')
+      }
+    })
+  ]);
+
+  console.log('Created users');
+
+  // Create entity roles
+  const entityRoles = await Promise.all([
+    // Club roles
+    prisma.entityRoles.create({
+      data: {
+        name: 'CS Club President',
+        description: 'President of Computer Science Club',
+        entityType_id: entityTypes[0].id,
         entity_id: entities[0].id,
-        entity_role_id: adminEntityRole.id,
-      },
+        template_id: roleTemplates[0].id
+      }
     }),
-    // John is member of Marketing
-    prisma.entityMembers.create({
+    prisma.entityRoles.create({
       data: {
-        user_id: users[0].id,
-        entity_id: entities[1].id,
-        entity_role_id: memberEntityRole.id,
-      },
-    }),
-    // Jane is admin of Marketing
-    prisma.entityMembers.create({
-      data: {
-        user_id: users[1].id,
-        entity_id: entities[1].id,
-        entity_role_id: adminEntityRole.id,
-      },
-    }),
-    // Jane is member of HR
-    prisma.entityMembers.create({
-      data: {
-        user_id: users[1].id,
-        entity_id: entities[2].id,
-        entity_role_id: memberEntityRole.id,
-      },
-    }),
-    // Bob is member of HR
-    prisma.entityMembers.create({
-      data: {
-        user_id: users[2].id,
-        entity_id: entities[2].id,
-        entity_role_id: memberEntityRole.id,
-      },
-    }),
-    // Alice is admin of HR
-    prisma.entityMembers.create({
-      data: {
-        user_id: users[3].id,
-        entity_id: entities[2].id,
-        entity_role_id: adminEntityRole.id,
-      },
-    }),
-    // Alice is member of Finance
-    prisma.entityMembers.create({
-      data: {
-        user_id: users[3].id,
-        entity_id: entities[3].id,
-        entity_role_id: memberEntityRole.id,
-      },
-    }),
-    // Godmode admin is admin of Executive Committee
-    prisma.entityMembers.create({
-      data: {
-        user_id: godmodeUser.id,
-        entity_id: entities[4].id,
-        entity_role_id: adminEntityRole.id,
-      },
-    }),
-  ]);
-
-  console.log('Created entity members:', entityMembers.length);
-
-  // Create venues (only godmode can create venues)
-  const venues = await Promise.all([
-    prisma.venues.create({
-      data: {
-        name: 'Main Conference Room',
-        description: 'Large conference room with projector and whiteboard',
-        address: 'Building A, Floor 1, Room 101',
-        capacity: 30,
-        amenities: 'Projector, Whiteboard, Video conferencing, Air conditioning',
-        entity_id: entities[0].id, // Managed by Engineering Department
-      },
-    }),
-    prisma.venues.create({
-      data: {
-        name: 'Executive Boardroom',
-        description: 'Formal boardroom for executive meetings',
-        address: 'Building A, Floor 5, Room 502',
-        capacity: 15,
-        amenities: 'Interactive display, Video conferencing, Catering service',
-        entity_id: entities[4].id, // Managed by Executive Committee
-      },
-    }),
-    prisma.venues.create({
-      data: {
-        name: 'Training Room',
-        description: 'Room equipped for training sessions and workshops',
-        address: 'Building B, Floor 2, Room 210',
-        capacity: 25,
-        amenities: 'Projector, Whiteboards, Laptops, Training materials',
-        entity_id: entities[2].id, // Managed by HR Department
-      },
-    }),
-    prisma.venues.create({
-      data: {
-        name: 'Marketing Studio',
-        description: 'Creative space for marketing activities',
-        address: 'Building C, Floor 3, Room 305',
-        capacity: 20,
-        amenities: 'Photography equipment, Green screen, Audio recording',
-        entity_id: entities[1].id, // Managed by Marketing Team
-      },
-    }),
-    prisma.venues.create({
-      data: {
-        name: 'Small Meeting Room',
-        description: 'Compact room for small team meetings',
-        address: 'Building A, Floor 2, Room 203',
-        capacity: 8,
-        amenities: 'TV screen, Whiteboard, Phone conferencing',
-        entity_id: entities[3].id, // Managed by Finance Department
-      },
-    }),
-  ]);
-
-  console.log('Created venues:', venues.map(v => ({ id: v.id, name: v.name })));
-
-  // Create venue bookings with different statuses
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const nextWeek = new Date(now);
-  nextWeek.setDate(nextWeek.getDate() + 7);
-  const lastWeek = new Date(now);
-  lastWeek.setDate(lastWeek.getDate() - 7);
-
-  const bookings = await Promise.all([
-    // Approved booking
-    prisma.venueBookings.create({
-      data: {
-        title: 'Engineering Team Meeting',
-        description: 'Weekly team sync-up',
-        start_time: new Date(tomorrow.setHours(9, 0, 0, 0)).toISOString(),
-        end_time: new Date(tomorrow.setHours(10, 30, 0, 0)).toISOString(),
-        status: 'approved',
-        venue_id: venues[0].id,
+        name: 'CS Club Member',
+        description: 'Member of Computer Science Club',
+        entityType_id: entityTypes[0].id,
         entity_id: entities[0].id,
-        creator_id: users[0].id,
-        approver_id: users[0].id, // Self-approved as admin of the entity
-      },
+        template_id: roleTemplates[1].id
+      }
     }),
-    // Pending booking
-    prisma.venueBookings.create({
+    // Security roles
+    prisma.entityRoles.create({
       data: {
-        title: 'Marketing Campaign Planning',
-        description: 'Planning session for Q4 campaign',
-        start_time: new Date(nextWeek.setHours(13, 0, 0, 0)).toISOString(),
-        end_time: new Date(nextWeek.setHours(15, 0, 0, 0)).toISOString(),
-        status: 'pending',
-        venue_id: venues[3].id,
-        entity_id: entities[1].id,
-        creator_id: users[0].id, // John (member of Marketing) created this
-      },
-    }),
-    // Rejected booking
-    prisma.venueBookings.create({
-      data: {
-        title: 'Finance Review',
-        description: 'Monthly financial review',
-        start_time: new Date(nextWeek.setHours(10, 0, 0, 0)).toISOString(),
-        end_time: new Date(nextWeek.setHours(11, 30, 0, 0)).toISOString(),
-        status: 'rejected',
-        venue_id: venues[4].id,
-        entity_id: entities[3].id,
-        creator_id: users[3].id, // Alice created this
-        approver_id: godmodeUser.id, // Rejected by godmode admin
-      },
-    }),
-    // Cancelled booking
-    prisma.venueBookings.create({
-      data: {
-        title: 'HR Training Session',
-        description: 'New employee orientation',
-        start_time: new Date(lastWeek.setHours(14, 0, 0, 0)).toISOString(),
-        end_time: new Date(lastWeek.setHours(16, 0, 0, 0)).toISOString(),
-        status: 'cancelled',
-        venue_id: venues[2].id,
+        name: 'Campus Security Chief',
+        description: 'Head of Campus Security',
+        entityType_id: entityTypes[1].id,
         entity_id: entities[2].id,
-        creator_id: users[2].id, // Bob created this
-        approver_id: users[3].id, // Approved by Alice (HR admin) before cancellation
-      },
+        template_id: roleTemplates[2].id
+      }
     }),
-    // Another approved booking
-    prisma.venueBookings.create({
+    prisma.entityRoles.create({
       data: {
-        title: 'Executive Board Meeting',
-        description: 'Quarterly board meeting',
-        start_time: new Date(nextWeek.setHours(9, 0, 0, 0)).toISOString(),
-        end_time: new Date(nextWeek.setHours(12, 0, 0, 0)).toISOString(),
-        status: 'approved',
-        venue_id: venues[1].id,
-        entity_id: entities[4].id,
-        creator_id: godmodeUser.id,
-        approver_id: godmodeUser.id,
-      },
+        name: 'Campus Security Officer',
+        description: 'Campus Security Personnel',
+        entityType_id: entityTypes[1].id,
+        entity_id: entities[2].id,
+        template_id: roleTemplates[3].id
+      }
     }),
+    // Director roles
+    prisma.entityRoles.create({
+      data: {
+        name: 'Student Affairs Director',
+        description: 'Director of Student Affairs',
+        entityType_id: entityTypes[2].id,
+        entity_id: entities[4].id,
+        template_id: roleTemplates[4].id
+      }
+    }),
+    prisma.entityRoles.create({
+      data: {
+        name: 'Academic Affairs Manager',
+        description: 'Manager of Academic Affairs',
+        entityType_id: entityTypes[2].id,
+        entity_id: entities[5].id,
+        template_id: roleTemplates[5].id
+      }
+    }),
+    // Faculty roles
+    prisma.entityRoles.create({
+      data: {
+        name: 'Engineering Senior Advisor',
+        description: 'Senior Advisor for Engineering',
+        entityType_id: entityTypes[3].id,
+        entity_id: entities[6].id,
+        template_id: roleTemplates[6].id
+      }
+    }),
+    prisma.entityRoles.create({
+      data: {
+        name: 'Science Junior Advisor',
+        description: 'Junior Advisor for Science',
+        entityType_id: entityTypes[3].id,
+        entity_id: entities[7].id,
+        template_id: roleTemplates[7].id
+      }
+    }),
+    // Venue roles
+    prisma.entityRoles.create({
+      data: {
+        name: 'Auditorium Manager',
+        description: 'Manager of Main Auditorium',
+        entityType_id: entityTypes[4].id,
+        entity_id: entities[8].id,
+        template_id: roleTemplates[8].id
+      }
+    }),
+    prisma.entityRoles.create({
+      data: {
+        name: 'Conference Room Staff',
+        description: 'Staff for Conference Room A',
+        entityType_id: entityTypes[4].id,
+        entity_id: entities[9].id,
+        template_id: roleTemplates[9].id
+      }
+    })
   ]);
 
-  console.log('Created bookings:', bookings.map(b => ({ id: b.id, title: b.title, status: b.status })));
+  console.log('Created entity roles');
 
-  console.log('Seeding completed successfully.');
+  // Create entity role permissions
+  await Promise.all([
+    // Club permissions
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[0].id,
+        permission_id: permissions[0].id,
+        resource_id: resources[0].id
+      }
+    }),
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[1].id,
+        permission_id: permissions[1].id,
+        resource_id: resources[0].id
+      }
+    }),
+    // Security permissions
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[2].id,
+        permission_id: permissions[2].id,
+        resource_id: resources[1].id
+      }
+    }),
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[3].id,
+        permission_id: permissions[3].id,
+        resource_id: resources[1].id
+      }
+    }),
+    // Director permissions
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[4].id,
+        permission_id: permissions[4].id,
+        resource_id: resources[2].id
+      }
+    }),
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[5].id,
+        permission_id: permissions[5].id,
+        resource_id: resources[2].id
+      }
+    }),
+    // Faculty permissions
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[6].id,
+        permission_id: permissions[6].id,
+        resource_id: resources[3].id
+      }
+    }),
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[7].id,
+        permission_id: permissions[7].id,
+        resource_id: resources[3].id
+      }
+    }),
+    // Venue permissions
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[8].id,
+        permission_id: permissions[8].id,
+        resource_id: resources[4].id
+      }
+    }),
+    prisma.entityRolePermissions.create({
+      data: {
+        entity_role_id: entityRoles[9].id,
+        permission_id: permissions[9].id,
+        resource_id: resources[4].id
+      }
+    })
+  ]);
+
+  console.log('Created entity role permissions');
+
+  // Create entity members
+  await Promise.all([
+    // Club members
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[0].id,
+        entity_role_id: entityRoles[0].id,
+        user_id: users[0].id
+      }
+    }),
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[0].id,
+        entity_role_id: entityRoles[1].id,
+        user_id: users[1].id
+      }
+    }),
+    // Security members
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[2].id,
+        entity_role_id: entityRoles[2].id,
+        user_id: users[2].id
+      }
+    }),
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[2].id,
+        entity_role_id: entityRoles[3].id,
+        user_id: users[3].id
+      }
+    }),
+    // Director members
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[4].id,
+        entity_role_id: entityRoles[4].id,
+        user_id: users[4].id
+      }
+    }),
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[5].id,
+        entity_role_id: entityRoles[5].id,
+        user_id: users[5].id
+      }
+    }),
+    // Faculty members
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[6].id,
+        entity_role_id: entityRoles[6].id,
+        user_id: users[6].id
+      }
+    }),
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[7].id,
+        entity_role_id: entityRoles[7].id,
+        user_id: users[7].id
+      }
+    }),
+    // Venue members
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[8].id,
+        entity_role_id: entityRoles[8].id,
+        user_id: users[8].id
+      }
+    }),
+    prisma.entityMembers.create({
+      data: {
+        entity_id: entities[9].id,
+        entity_role_id: entityRoles[9].id,
+        user_id: users[9].id
+      }
+    })
+  ]);
+
+  console.log('Created entity members');
+
+  console.log('Seeding finished');
 }
 
 main()
   .catch((e) => {
-    console.error('Error during seeding:', e);
+    console.error(e);
     process.exit(1);
   })
   .finally(async () => {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/middleware/roleCheck';
 import bcrypt from 'bcrypt';
+import { isSystemAdmin, verifyAuth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
 
 // Get a specific user by ID
 export async function GET(
@@ -15,7 +17,7 @@ export async function GET(
       return authResult;
     }
 
-    const id = parseInt(params.id);
+    const { id } = params;
     
     const user = await prisma.users.findUnique({
       where: { id },
@@ -23,10 +25,26 @@ export async function GET(
         id: true,
         username: true,
         email: true,
-        role_id: true,
-        role: true, // Include the role relationship
         created_at: true,
-        // Exclude password_hash for security
+        entityMembers: {
+          include: {
+            entity: {
+              include: {
+                entityType: true,
+              },
+            },
+            entityRole: {
+              include: {
+                entityRolePermissions: {
+                  include: {
+                    permission: true,
+                    resource: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     
@@ -37,7 +55,13 @@ export async function GET(
       );
     }
     
-    return NextResponse.json(user);
+    // Check if the user is a System Admin
+    const isAdmin = await isSystemAdmin(id);
+    
+    return NextResponse.json({
+      ...user,
+      isSystemAdmin: isAdmin,
+    });
   } catch (error) {
     console.error('Error fetching user:', error);
     return NextResponse.json(
@@ -53,82 +77,148 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Check if user has permission to update users
-    const authResult = await requirePermission('update', '/api/users')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    const { id } = params;
+    const { username, email, password, entity_id, entity_role_id } = await request.json();
+
+    // Verify authentication and get current user
+    const currentUser = await verifyAuth(request);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const id = parseInt(params.id);
-    const body = await request.json();
-    const { username, email, password, role_id } = body;
-    
-    // Check if user exists
-    const existingUser = await prisma.users.findUnique({
+    // Check if user has permission to update users
+    const hasPermission = await requirePermission('update', '/api/users')(request);
+    if ('isAuthorized' in hasPermission === false) {
+      return hasPermission;
+    }
+
+    // Find the user to update
+    const userToUpdate = await prisma.users.findUnique({
       where: { id },
-    });
-    
-    if (!existingUser) {
-      return NextResponse.json(
-        { message: 'User not found' },
-        { status: 404 }
-      );
-    }
-    
-    // Prepare update data
-    const updateData: any = {};
-    
-    if (username) updateData.username = username;
-    if (email) updateData.email = email;
-    if (role_id) {
-      // Check if role exists
-      const role = await prisma.roles.findUnique({
-        where: { id: role_id },
-      });
-      
-      if (!role) {
-        return NextResponse.json(
-          { message: 'Role not found' },
-          { status: 404 }
-        );
-      }
-      
-      updateData.role_id = role_id;
-    }
-    
-    // Hash password if provided
-    if (password) {
-      const saltRounds = 10;
-      updateData.password_hash = await bcrypt.hash(password, saltRounds);
-    }
-    
-    // Update user
-    const updatedUser = await prisma.users.update({
-      where: { id },
-      data: updateData,
       include: {
-        role: true, // Include the role in the response
-      },
-    });
-    
-    // Remove password from response
-    const { password_hash: _, ...userWithoutPassword } = updatedUser;
-    
-    // Log this action
-    await prisma.auditLogs.create({
-      data: {
-        user_id: authResult.user.id,
-        entity_type: 'user',
-        entity_id: id,
-        action: 'update_user',
+        entityMembers: true
       }
     });
-    
-    return NextResponse.json(userWithoutPassword);
+
+    if (!userToUpdate) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Start a transaction to update user and entity membership
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      // Update user basic info
+      const userUpdateData: Prisma.usersUpdateInput = {};
+      if (username) userUpdateData.username = username;
+      if (email) userUpdateData.email = email;
+      if (password) {
+        const salt = await bcrypt.genSalt(10);
+        userUpdateData.password_hash = await bcrypt.hash(password, salt);
+      }
+
+      const updatedUser = await tx.users.update({
+        where: { id },
+        data: userUpdateData,
+        include: {
+          entityMembers: {
+            include: {
+              entity: {
+                include: {
+                  entityType: true
+                }
+              },
+              entityRole: {
+                include: {
+                  entityRolePermissions: {
+                    include: {
+                      permission: true,
+                      resource: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // Handle entity membership update if provided
+      if (entity_id && entity_role_id) {
+        // Delete existing entity memberships
+        await tx.entityMembers.deleteMany({
+          where: { user_id: id }
+        });
+
+        // Create new entity membership
+        await tx.entityMembers.create({
+          data: {
+            user_id: id,
+            entity_id,
+            entity_role_id
+          }
+        });
+
+        // Fetch updated user with new entity membership
+        return await tx.users.findUnique({
+          where: { id },
+          include: {
+            entityMembers: {
+              include: {
+                entity: {
+                  include: {
+                    entityType: true
+                  }
+                },
+                entityRole: {
+                  include: {
+                    entityRolePermissions: {
+                      include: {
+                        permission: true,
+                        resource: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      return updatedUser;
+    });
+
+    // Check if user is a System Admin
+    const isSystemAdminFlag = await isSystemAdmin(id);
+
+    // Create audit log
+    if (updatedUser) {
+      await prisma.auditLog.create({
+        data: {
+          user_id: currentUser.id,
+          entity_type: 'user',
+          action: 'update_user',
+          details: { userId: updatedUser.id }
+        }
+      });
+    }
+
+    // Return updated user with isSystemAdmin flag
+    return NextResponse.json({
+      ...updatedUser,
+      isSystemAdmin: isSystemAdminFlag
+    });
   } catch (error) {
     console.error('Error updating user:', error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        return NextResponse.json(
+          { message: 'Username or email already exists' },
+          { status: 400 }
+        );
+      }
+    }
     return NextResponse.json(
-      { message: 'Error updating user' },
+      { message: error instanceof Error ? error.message : 'Error updating user' },
       { status: 500 }
     );
   }
@@ -146,7 +236,7 @@ export async function DELETE(
       return authResult;
     }
 
-    const id = parseInt(params.id);
+    const { id } = params;
     
     // Check if user exists
     const existingUser = await prisma.users.findUnique({
@@ -160,18 +250,41 @@ export async function DELETE(
       );
     }
     
-    // Delete user
-    await prisma.users.delete({
-      where: { id },
+    // Delete user and related records in a transaction
+    await prisma.$transaction(async (tx) => {
+      // Delete all entity memberships
+      await tx.entityMembers.deleteMany({
+        where: { user_id: id }
+      });
+
+      // Delete all user sessions
+      await tx.userSession.deleteMany({
+        where: { user_id: id }
+      });
+
+      // Delete all audit logs
+      await tx.auditLog.deleteMany({
+        where: { user_id: id }
+      });
+
+      // Delete all API usage records
+      await tx.apiUsage.deleteMany({
+        where: { user_id: id }
+      });
+
+      // Delete the user
+      await tx.users.delete({
+        where: { id }
+      });
     });
     
     // Log this action
-    await prisma.auditLogs.create({
+    await prisma.auditLog.create({
       data: {
         user_id: authResult.user.id,
         entity_type: 'user',
-        entity_id: id,
         action: 'delete_user',
+        details: { userId: id }
       }
     });
     

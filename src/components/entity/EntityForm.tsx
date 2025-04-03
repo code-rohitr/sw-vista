@@ -1,165 +1,232 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/components/ui/use-toast';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from 'sonner';
 
-interface EntityFormProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (data: any) => Promise<void>;
-  initialData?: any;
-  isEditMode?: boolean;
+interface EntityType {
+  id: number;
+  name: string;
 }
 
-export default function EntityForm({ isOpen, onClose, onSubmit, initialData, isEditMode = false }: EntityFormProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [entityTypeId, setEntityTypeId] = useState<number | ''>('');
-  const [entityTypes, setEntityTypes] = useState<any[]>([]);
+interface Entity {
+  id: number;
+  name: string;
+  description?: string;
+  entity_type_id: number;
+  parent_id?: number;
+}
+
+interface EntityFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (data: any) => void;
+  initialData?: Entity | null;
+}
+
+export function EntityForm({
+  open,
+  onOpenChange,
+  onSubmit,
+  initialData,
+}: EntityFormProps) {
+  const { hasPermission } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  
-  const { toast } = useToast();
+  const [entityTypes, setEntityTypes] = useState<EntityType[]>([]);
+  const [parentEntities, setParentEntities] = useState<Entity[]>([]);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    entity_type_id: '',
+    parent_id: '',
+  });
 
   useEffect(() => {
-    // Reset form when dialog opens/closes or initialData changes
-    if (isOpen) {
-      if (initialData) {
-        setName(initialData.name || '');
-        setDescription(initialData.description || '');
-        setEntityTypeId(initialData.entity_type_id || '');
-      } else {
-        setName('');
-        setDescription('');
-        setEntityTypeId('');
-      }
-      
-      // Fetch entity types
+    if (open) {
       fetchEntityTypes();
+      fetchParentEntities();
+      if (initialData) {
+        setFormData({
+          name: initialData.name,
+          description: initialData.description || '',
+          entity_type_id: initialData.entity_type_id.toString(),
+          parent_id: initialData.parent_id?.toString() || '',
+        });
+      } else {
+        setFormData({
+          name: '',
+          description: '',
+          entity_type_id: '',
+          parent_id: '',
+        });
+      }
     }
-  }, [isOpen, initialData]);
+  }, [open, initialData]);
 
   const fetchEntityTypes = async () => {
     try {
-      setIsLoading(true);
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('Not authenticated');
-
-      const response = await fetch('/api/entity-types', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch entity types');
+      const response = await fetch('/api/entity-types');
+      if (!response.ok) {
+        throw new Error('Failed to fetch entity types');
+      }
       const data = await response.json();
       setEntityTypes(data);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive',
-      });
+      console.error('Error fetching entity types:', error);
+      toast.error('Failed to load entity types');
+    }
+  };
+
+  const fetchParentEntities = async () => {
+    try {
+      const response = await fetch('/api/entities');
+      if (!response.ok) {
+        throw new Error('Failed to fetch parent entities');
+      }
+      const data = await response.json();
+      // Filter out the current entity if editing
+      const filteredEntities = initialData
+        ? data.filter((entity: Entity) => entity.id !== initialData.id)
+        : data;
+      setParentEntities(filteredEntities);
+    } catch (error) {
+      console.error('Error fetching parent entities:', error);
+      toast.error('Failed to load parent entities');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const data = {
+        ...formData,
+        entity_type_id: parseInt(formData.entity_type_id),
+        parent_id: formData.parent_id ? parseInt(formData.parent_id) : null,
+      };
+
+      onSubmit(data);
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      toast.error('Failed to save entity');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Check the handleSubmit function in EntityForm.tsx
-  const handleSubmit = async () => {
-    try {
-      // Make sure these fields are being set correctly
-      if (!name || !entityTypeId) {
-        toast({
-          title: 'Error',
-          description: 'Please fill in all required fields',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      setIsLoading(true);
-      
-      // Call the parent's onSubmit directly instead of making our own API call
-      await onSubmit({
-        name,
-        description,
-        entity_type_id: entityTypeId
-      });
-      
-      // Close the dialog on success
-      onClose();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEditMode ? 'Edit Entity' : 'Create New Entity'}</DialogTitle>
-          <DialogDescription>
-            {isEditMode
-              ? 'Update entity information.'
-              : 'Fill in the details to create a new entity.'}
-          </DialogDescription>
+          <DialogTitle>
+            {initialData ? 'Edit Entity' : 'Create Entity'}
+          </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter entity name"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+              disabled={isLoading}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter entity description"
-              rows={4}
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              disabled={isLoading}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="entityType">Entity Type</Label>
-            <select
-              id="entityType"
-              value={entityTypeId}
-              onChange={(e) => setEntityTypeId(e.target.value ? parseInt(e.target.value) : '')}
-              className="w-full p-2 border rounded"
+            <Label htmlFor="entity_type_id">Entity Type</Label>
+            <Select
+              value={formData.entity_type_id}
+              onValueChange={(value) =>
+                setFormData((prev) => ({ ...prev, entity_type_id: value }))
+              }
             >
-              <option value="">Select Entity Type</option>
-              {entityTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger disabled={isLoading}>
+                <SelectValue placeholder="Select entity type" />
+              </SelectTrigger>
+              <SelectContent>
+                {entityTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.id.toString()}>
+                    {type.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!formData.entity_type_id && (
+              <p className="text-sm text-red-500">Entity type is required</p>
+            )}
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isLoading}>
-            {isEditMode ? 'Update' : 'Create'}
-          </Button>
-        </DialogFooter>
+          <div className="space-y-2">
+            <Label htmlFor="parent_id">Parent Entity (Optional)</Label>
+            <Select
+              value={formData.parent_id}
+              onValueChange={(value) =>
+                setFormData((prev) => ({ ...prev, parent_id: value }))
+              }
+            >
+              <SelectTrigger disabled={isLoading}>
+                <SelectValue placeholder="Select parent entity" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {parentEntities.map((entity) => (
+                  <SelectItem key={entity.id} value={entity.id.toString()}>
+                    {entity.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? 'Saving...' : initialData ? 'Update' : 'Create'}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

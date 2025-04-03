@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, checkPermission, isSystemAdmin } from '@/lib/auth';
+import { verifyToken } from '@/lib/jwt';
+import { checkPermission, isSystemAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 // Define return types for the middleware
@@ -29,16 +30,61 @@ export function requirePermission(action: string, resourcePath: string, entityId
       const token = authHeader.split(' ')[1];
       
       // Verify token
-      const decoded = await verifyToken(token);
+      const decoded = verifyToken(token);
       if (!decoded) {
         return NextResponse.json(
           { message: 'Unauthorized: Invalid token' },
           { status: 401 }
         );
       }
+
+      // If user is system admin, allow access
+      if (decoded.isSystemAdmin) {
+        const user = await prisma.users.findUnique({
+          where: { id: decoded.id },
+          include: {
+            entityMembers: {
+              include: {
+                entity: {
+                  include: {
+                    entityType: true,
+                    parent: true
+                  }
+                },
+                entityRole: {
+                  include: {
+                    template: true,
+                    entityRolePermissions: {
+                      include: {
+                        permission: true,
+                        resource: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        if (!user) {
+          return NextResponse.json(
+            { message: 'Unauthorized: User not found' },
+            { status: 401 }
+          );
+        }
+
+        return {
+          isAuthorized: true,
+          user: {
+            ...user,
+            isSystemAdmin: true
+          }
+        };
+      }
       
       // Get entity ID from request if entityIdParam is provided
-      let entityId: number | undefined;
+      let entityId: string | undefined;
       if (entityIdParam) {
         // Extract entity ID from URL or request body
         const url = new URL(request.url);
@@ -46,23 +92,10 @@ export function requirePermission(action: string, resourcePath: string, entityId
         const paramIndex = pathParts.findIndex(part => part === entityIdParam);
         
         if (paramIndex !== -1 && paramIndex < pathParts.length - 1) {
-          entityId = parseInt(pathParts[paramIndex + 1]);
+          entityId = pathParts[paramIndex + 1];
         } else {
           // Try to get from query params
-          const queryParam = url.searchParams.get(entityIdParam);
-          if (queryParam) {
-            entityId = parseInt(queryParam);
-          } else if (request.method !== 'GET') {
-            // Try to get from request body for non-GET requests
-            try {
-              const body = await request.clone().json();
-              if (body[entityIdParam]) {
-                entityId = parseInt(body[entityIdParam]);
-              }
-            } catch (e) {
-              // Ignore JSON parsing errors
-            }
-          }
+          entityId = url.searchParams.get(entityIdParam) || undefined;
         }
       }
       
@@ -81,28 +114,47 @@ export function requirePermission(action: string, resourcePath: string, entityId
         );
       }
       
-      // Get user with system roles for request context
+      // Get user with system roles and entity memberships for request context
       const user = await prisma.users.findUnique({
         where: { id: decoded.id },
+        include: {
+          entityMembers: {
+            include: {
+              entity: {
+                include: {
+                  entityType: true,
+                  parent: true
+                }
+              },
+              entityRole: {
+                include: {
+                  template: true,
+                  entityRolePermissions: {
+                    include: {
+                      permission: true,
+                      resource: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       });
 
-      // Check if user is System Admin
-      const isAdmin = await isSystemAdmin(user?.id || 0);
-      
       if (!user) {
         return NextResponse.json(
           { message: 'Unauthorized: User not found' },
           { status: 401 }
         );
       }
-      
-      // Add user info with System Admin status to request
+
       return {
         isAuthorized: true,
-        user: user ? {
+        user: {
           ...user,
-          isSystemAdmin: isAdmin,
-        } : null,
+          isSystemAdmin: false
+        }
       };
     } catch (error) {
       console.error('Authentication error:', error);

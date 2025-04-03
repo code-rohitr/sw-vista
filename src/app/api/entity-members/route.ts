@@ -29,11 +29,11 @@ export async function GET(request: NextRequest) {
             id: true,
             username: true,
             email: true,
-            isSystemAdmin: true,
-            systemRoles: {
+            created_at: true,
+            entityMembers: {
               include: {
-                entityRole: true,
-                entity: true
+                entity: true,
+                entityRole: true
               }
             }
           }

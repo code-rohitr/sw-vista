@@ -1,260 +1,263 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { useToast } from '@/components/ui/use-toast';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from 'sonner';
 
-interface EntityMemberFormProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (data: any) => Promise<void>;
-  initialData?: any;
-  isEditMode?: boolean;
+interface Entity {
+  id: number;
+  name: string;
+  entity_type_id: number;
 }
 
-export default function EntityMemberForm({ isOpen, onClose, onSubmit, initialData, isEditMode = false }: EntityMemberFormProps) {
-  const [entityId, setEntityId] = useState<number | ''>('');
-  const [userId, setUserId] = useState<number | ''>('');
-  const [entityRoleId, setEntityRoleId] = useState<number | ''>('');
-  const [entities, setEntities] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [entityRoles, setEntityRoles] = useState<any[]>([]);
-  const [selectedEntityType, setSelectedEntityType] = useState<number | null>(null);
+interface User {
+  id: number;
+  username: string;
+  email: string;
+}
+
+interface EntityRole {
+  id: number;
+  name: string;
+  description?: string;
+  template_id?: number;
+  template?: {
+    id: number;
+    name: string;
+    permissions: string;
+  };
+}
+
+interface EntityMemberFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (data: any) => void;
+  initialData?: {
+    entity_id: number;
+    user_id: number;
+    entity_role_id: number;
+  } | null;
+}
+
+export function EntityMemberForm({
+  open,
+  onOpenChange,
+  onSubmit,
+  initialData,
+}: EntityMemberFormProps) {
+  const { hasPermission } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  
-  const { toast } = useToast();
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [entityRoles, setEntityRoles] = useState<EntityRole[]>([]);
+  const [formData, setFormData] = useState({
+    entity_id: '',
+    user_id: '',
+    entity_role_id: '',
+  });
 
   useEffect(() => {
-    // Reset form when dialog opens/closes or initialData changes
-    if (isOpen) {
-      if (initialData) {
-        setEntityId(initialData.entity_id || '');
-        setUserId(initialData.user_id || '');
-        setEntityRoleId(initialData.entity_role_id || '');
-      } else {
-        setEntityId('');
-        setUserId('');
-        setEntityRoleId('');
-        setSelectedEntityType(null);
-      }
-      
-      // Fetch entities and users
+    if (open) {
       fetchEntities();
       fetchUsers();
-      
-      // If we have an entity_id, we need to fetch its type to load the appropriate roles
-      if (initialData?.entity_id) {
-        fetchEntities().then((entitiesData) => {
-          if (entitiesData) {
-            const entity = entitiesData.find((e: any) => e.id === initialData.entity_id);
-            if (entity) {
-              setSelectedEntityType(entity.entity_type_id);
-              fetchEntityRoles(entity.entity_type_id);
-            }
-          }
+      if (initialData) {
+        setFormData({
+          entity_id: initialData.entity_id.toString(),
+          user_id: initialData.user_id.toString(),
+          entity_role_id: initialData.entity_role_id.toString(),
+        });
+        fetchEntityRoles(initialData.entity_id);
+      } else {
+        setFormData({
+          entity_id: '',
+          user_id: '',
+          entity_role_id: '',
         });
       }
     }
-  }, [isOpen, initialData]);
+  }, [open, initialData]);
 
   const fetchEntities = async () => {
     try {
-      setIsLoading(true);
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('Not authenticated');
-
-      const response = await fetch('/api/entities', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch entities');
+      const response = await fetch('/api/entities');
+      if (!response.ok) {
+        throw new Error('Failed to fetch entities');
+      }
       const data = await response.json();
       setEntities(data);
-      return data;
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive',
-      });
-      return null;
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching entities:', error);
+      toast.error('Failed to load entities');
     }
   };
 
   const fetchUsers = async () => {
     try {
-      setIsLoading(true);
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('Not authenticated');
-
-      const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch users');
+      const response = await fetch('/api/users');
+      if (!response.ok) {
+        throw new Error('Failed to fetch users');
+      }
       const data = await response.json();
       setUsers(data);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching users:', error);
+      toast.error('Failed to load users');
     }
   };
 
-  const fetchEntityRoles = async (entityTypeId: number) => {
+  const fetchEntityRoles = async (entityId: number) => {
     try {
-      setIsLoading(true);
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('Not authenticated');
-
-      const response = await fetch(`/api/entity-roles?entity_type_id=${entityTypeId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch entity roles');
+      const response = await fetch(`/api/entities/${entityId}/roles`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch entity roles');
+      }
       const data = await response.json();
       setEntityRoles(data);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching entity roles:', error);
+      toast.error('Failed to load entity roles');
     }
   };
 
-  const handleEntityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value ? parseInt(e.target.value) : '';
-    setEntityId(value);
-    
-    if (value !== '') {
-      const entity = entities.find(e => e.id === value);
-      if (entity) {
-        setSelectedEntityType(entity.entity_type_id);
-        fetchEntityRoles(entity.entity_type_id);
-      }
+  const handleEntityChange = async (entityId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      entity_id: entityId,
+      entity_role_id: '',
+    }));
+    if (entityId) {
+      await fetchEntityRoles(parseInt(entityId));
     } else {
-      setSelectedEntityType(null);
       setEntityRoles([]);
     }
-    
-    setEntityRoleId('');
   };
 
-  const handleSubmit = async () => {
-    if (!entityId || !userId || !entityRoleId) {
-      toast({
-        title: 'Error',
-        description: 'Please fill in all required fields',
-        variant: 'destructive',
-      });
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
 
     try {
-      setIsLoading(true);
-      await onSubmit({
-        entity_id: entityId,
-        user_id: userId,
-        entity_role_id: entityRoleId
-      });
+      const data = {
+        entity_id: parseInt(formData.entity_id),
+        user_id: parseInt(formData.user_id),
+        entity_role_id: parseInt(formData.entity_role_id),
+      };
+
+      onSubmit(data);
     } catch (error) {
-      // Error is handled by parent component
+      console.error('Error submitting form:', error);
+      toast.error('Failed to save entity member');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEditMode ? 'Edit Entity Member' : 'Add Entity Member'}</DialogTitle>
-          <DialogDescription>
-            {isEditMode
-              ? 'Update entity member information.'
-              : 'Assign a user to an entity with a specific role.'}
-          </DialogDescription>
+          <DialogTitle>
+            {initialData ? 'Edit Entity Member' : 'Add Entity Member'}
+          </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="entity">Entity</Label>
-            <select
-              id="entity"
-              value={entityId}
-              onChange={handleEntityChange}
-              className="w-full p-2 border rounded"
-              disabled={isEditMode} // Typically can't change entity in edit mode
+            <Label htmlFor="entity_id">Entity</Label>
+            <Select
+              value={formData.entity_id}
+              onValueChange={handleEntityChange}
             >
-              <option value="">Select Entity</option>
-              {entities.map((entity) => (
-                <option key={entity.id} value={entity.id}>
-                  {entity.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger disabled={isLoading}>
+                <SelectValue placeholder="Select entity" />
+              </SelectTrigger>
+              <SelectContent>
+                {entities.map((entity) => (
+                  <SelectItem key={entity.id} value={entity.id.toString()}>
+                    {entity.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!formData.entity_id && (
+              <p className="text-sm text-red-500">Entity is required</p>
+            )}
           </div>
-          
           <div className="space-y-2">
-            <Label htmlFor="user">User</Label>
-            <select
-              id="user"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value ? parseInt(e.target.value) : '')}
-              className="w-full p-2 border rounded"
-              disabled={isEditMode} // Typically can't change user in edit mode
+            <Label htmlFor="user_id">User</Label>
+            <Select
+              value={formData.user_id}
+              onValueChange={(value) =>
+                setFormData((prev) => ({ ...prev, user_id: value }))
+              }
             >
-              <option value="">Select User</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.username || user.email || `User ${user.id}`}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger disabled={isLoading}>
+                <SelectValue placeholder="Select user" />
+              </SelectTrigger>
+              <SelectContent>
+                {users.map((user) => (
+                  <SelectItem key={user.id} value={user.id.toString()}>
+                    {user.username} ({user.email})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!formData.user_id && (
+              <p className="text-sm text-red-500">User is required</p>
+            )}
           </div>
-          
           <div className="space-y-2">
-            <Label htmlFor="entityRole">Role</Label>
-            <select
-              id="entityRole"
-              value={entityRoleId}
-              onChange={(e) => setEntityRoleId(e.target.value ? parseInt(e.target.value) : '')}
-              className="w-full p-2 border rounded"
-              disabled={!selectedEntityType} // Disable until an entity is selected
+            <Label htmlFor="entity_role_id">Role</Label>
+            <Select
+              value={formData.entity_role_id}
+              onValueChange={(value) =>
+                setFormData((prev) => ({ ...prev, entity_role_id: value }))
+              }
             >
-              <option value="">Select Role</option>
-              {entityRoles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger disabled={isLoading || !formData.entity_id}>
+                <SelectValue placeholder="Select role" />
+              </SelectTrigger>
+              <SelectContent>
+                {entityRoles.map((role) => (
+                  <SelectItem key={role.id} value={role.id.toString()}>
+                    {role.name}
+                    {role.template && ` (Template: ${role.template.name})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!formData.entity_role_id && (
+              <p className="text-sm text-red-500">Role is required</p>
+            )}
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={!entityId || !userId || !entityRoleId || isLoading}>
-            {isEditMode ? 'Update' : 'Add'}
-          </Button>
-        </DialogFooter>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? 'Saving...' : initialData ? 'Update' : 'Add'}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -1,5 +1,3 @@
-// This is your Prisma schema file
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,215 +7,342 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Core Models
 model users {
-  id                Int              @id @default(autoincrement())
-  username          String           @unique
-  email             String           @unique
+  id                String   @id @default(uuid())
+  username          String   @unique
+  email             String   @unique
   password_hash     String
-  created_at        DateTime         @default(now())
-  
-  // Relationships
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
   entityMembers     entityMembers[]
-  auditLogs         auditLog[]
-  reports           report[]         @relation("ReporterReports")
-  approvals         approval[]       @relation("ApproverApprovals")
-  createdBookings   VenueBooking[]   @relation("BookingCreator")
-  approvedBookings  VenueBooking[]   @relation("BookingApprover")
+  auditLogs         auditLog[] @relation("UserAuditLogs")
+  sessions          userSession[] @relation("UserSessions")
+  createdVersions   roleTemplateVersion[] @relation("CreatedVersions")
+  createdAcls       entityAcl[] @relation("CreatedAcls")
+  userAcls          entityAcl[] @relation("UserAcl")
+  workflowRequests  workflowRequest[] @relation("RequestorRequests")
+  workflowApprovals workflowApproval[] @relation("ApproverApprovals")
+  createdPermissions permissions[] @relation("PermissionCreator")
+  updatedPermissions permissions[] @relation("PermissionUpdater")
+  reports          report[] @relation("ReporterReports")
+  approvedBookings VenueBooking[] @relation("BookingApprover")
+  createdBookings  VenueBooking[] @relation("BookingCreator")
+  apiUsage         apiUsage[] @relation("UserApiUsage")
+  approvals        approval[] @relation("ApproverApprovals")
 }
 
 model permissions {
-  id            Int                     @id @default(autoincrement())
-  name          String                  @unique
-  description   String?
-  action        String                  // view, create, update, delete
-  created_at    DateTime                @default(now())
-  
-  // Relationships
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  action          String
+  scope           String?
+  resource_type   String?
+  created_by      String
+  updated_by      String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  creator         users    @relation("PermissionCreator", fields: [created_by], references: [id])
+  updater         users?   @relation("PermissionUpdater", fields: [updated_by], references: [id])
+  permissionResources permissionResources[]
   entityRolePermissions entityRolePermissions[]
-  permissionResources   permissionResources[]
 }
 
 model resources {
-  id            Int                     @id @default(autoincrement())
-  name          String                  @unique
-  path          String                  @unique
-  description   String?
-  created_at    DateTime                @default(now())
-  
-  // Relationships
-  permissionResources   permissionResources[]
+  id              String   @id @default(uuid())
+  name            String
+  path            String
+  description     String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  permissionResources permissionResources[]
   entityRolePermissions entityRolePermissions[]
 }
 
-// Junction Tables
 model permissionResources {
-  id            Int         @id @default(autoincrement())
-  permission_id Int
-  resource_id   Int
-  created_at    DateTime    @default(now())
-  
-  // Relationships
-  permission    permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
-  resource      resources   @relation(fields: [resource_id], references: [id], onDelete: Cascade)
-  
+  id              String   @id @default(uuid())
+  permission_id   String
+  resource_id     String
+  created_at      DateTime @default(now())
+  permission      permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  resource        resources   @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+
   @@unique([permission_id, resource_id])
 }
 
-model entityRolePermissions {
-  id              Int           @id @default(autoincrement())
-  entity_role_id  Int
-  permission_id   Int
-  resource_id     Int          // Keep this for now
-  created_at      DateTime      @default(now())
-  
-  // Relationships
-  entityRole      entityRoles   @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
-  permission      permissions   @relation(fields: [permission_id], references: [id], onDelete: Cascade)
-  resource        resources     @relation(fields: [resource_id], references: [id], onDelete: Cascade)
-  
-  @@unique([entity_role_id, permission_id, resource_id])
-}
-
-// Entity Models
 model entityTypes {
-  id          Int           @id @default(autoincrement())
-  name        String        @unique
-  description String?
-  created_at  DateTime      @default(now())
-  
-  // Relationships
-  entities    entity[]
-  entityRoles entityRoles[]
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  entities        entity[]
+  entityRoles     entityRoles[]
 }
 
 model entity {
-  id             Int            @id @default(autoincrement())
-  name           String
-  description    String?
-  created_at     DateTime       @default(now())
-  entity_type_id Int
-  
-  // Relationships
-  entityType     entityTypes    @relation(fields: [entity_type_id], references: [id])
-  entityMembers  entityMembers[]
-  entityRoles    entityRoles[]
-  venues         Venue[]
-  venueBookings  VenueBooking[]
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  entityType      entityTypes @relation(fields: [entityType_id], references: [id])
+  entityType_id   String
+  parent          entity?  @relation("EntityHierarchy", fields: [parent_id], references: [id])
+  parent_id       String?
+  children        entity[] @relation("EntityHierarchy")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  entityMembers   entityMembers[]
+  entityRoles     entityRoles[]
+  acls            entityAcl[]
+  workflowRequests workflowRequest[]
+  VenueBookings   VenueBooking[]
+  venues          Venue[]
+}
+
+model roleTemplate {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  versions        roleTemplateVersion[]
+  entityRoles     entityRoles[]
+}
+
+model roleTemplateVersion {
+  id              String   @id @default(uuid())
+  template_id     String
+  version_number  Int
+  changes         Json?
+  permissions     Json?
+  created_by      String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  template        roleTemplate @relation(fields: [template_id], references: [id])
+  creator         users    @relation("CreatedVersions", fields: [created_by], references: [id])
+
+  @@unique([template_id, version_number])
+  @@index([template_id])
 }
 
 model entityRoles {
-  id             Int                     @id @default(autoincrement())
-  name           String
-  description    String?
-  created_at     DateTime                @default(now())
-  entity_type_id Int
-  entity_id      Int?
-  is_default     Boolean                 @default(false)
-  
-  // Relationships
-  entityType     entityTypes             @relation(fields: [entity_type_id], references: [id])
-  entity         entity?                 @relation(fields: [entity_id], references: [id])
-  entityMembers  entityMembers[]
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  entityType      entityTypes @relation(fields: [entityType_id], references: [id])
+  entityType_id   String
+  entity          entity   @relation(fields: [entity_id], references: [id])
+  entity_id       String
+  template        roleTemplate @relation(fields: [template_id], references: [id])
+  template_id     String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  entityMembers   entityMembers[]
   entityRolePermissions entityRolePermissions[]
-  
-  @@unique([name, entity_type_id])
-  @@unique([name, entity_id])
+  acls            entityAcl[]
 }
 
 model entityMembers {
-  id             Int         @id @default(autoincrement())
-  entity_id      Int
-  user_id        Int
-  entity_role_id Int
-  created_at     DateTime    @default(now())
-  
-  // Relationships
-  entity         entity      @relation(fields: [entity_id], references: [id])
-  user           users       @relation(fields: [user_id], references: [id])
-  entityRole     entityRoles @relation(fields: [entity_role_id], references: [id])
-  
+  id              String   @id @default(uuid())
+  entity          entity   @relation(fields: [entity_id], references: [id])
+  entity_id       String
+  entityRole      entityRoles @relation(fields: [entity_role_id], references: [id])
+  entity_role_id  String
+  user            users    @relation(fields: [user_id], references: [id])
+  user_id         String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
   @@unique([entity_id, user_id])
 }
 
-// Audit and Reporting Models
+model entityRolePermissions {
+  id              String   @id @default(uuid())
+  entity_role_id  String
+  permission_id   String
+  resource_id     String
+  created_at      DateTime @default(now())
+  entityRole      entityRoles @relation(fields: [entity_role_id], references: [id], onDelete: Cascade)
+  permission      permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  resource        resources   @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+
+  @@unique([entity_role_id, permission_id, resource_id])
+}
+
+model entityAcl {
+  id              String   @id @default(uuid())
+  entity_id       String
+  user_id         String?
+  role_id         String?
+  permission_type String
+  conditions      Json?
+  created_by      String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  entity          entity   @relation(fields: [entity_id], references: [id])
+  user            users?   @relation("UserAcl", fields: [user_id], references: [id])
+  role            entityRoles? @relation(fields: [role_id], references: [id])
+  creator         users    @relation("CreatedAcls", fields: [created_by], references: [id])
+
+  @@index([entity_id])
+  @@index([user_id])
+  @@index([role_id])
+}
+
+model userSession {
+  id          String   @id @default(uuid())
+  user_id     String
+  started_at  DateTime @default(now())
+  expires_at  DateTime
+  last_active DateTime @default(now())
+  device_info Json?
+  ip_address  String?
+  user_agent  String?
+  is_active   Boolean  @default(true)
+  user        users    @relation("UserSessions", fields: [user_id], references: [id])
+  auditLogs   auditLog[]
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([expires_at])
+}
+
+model apiUsage {
+  id              String   @id @default(uuid())
+  user_id         String
+  endpoint        String
+  method          String
+  status_code     Int
+  response_time   Int
+  timestamp       DateTime @default(now())
+  user            users    @relation("UserApiUsage", fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([timestamp])
+}
+
+model workflowRequest {
+  id              String   @id @default(uuid())
+  type            String
+  requestor_id    String
+  entity_id       String
+  status          String   @default("pending")
+  details         Json?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  requestor       users    @relation("RequestorRequests", fields: [requestor_id], references: [id])
+  entity          entity   @relation(fields: [entity_id], references: [id])
+  approvals       workflowApproval[]
+
+  @@index([requestor_id])
+  @@index([entity_id])
+  @@index([status])
+}
+
+model workflowApproval {
+  id                String   @id @default(uuid())
+  request_id        String
+  approver_id       String
+  status            String   @default("pending")
+  comments          String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  request           workflowRequest @relation(fields: [request_id], references: [id])
+  approver          users    @relation("ApproverApprovals", fields: [approver_id], references: [id])
+
+  @@index([request_id])
+  @@index([approver_id])
+  @@index([status])
+}
+
 model report {
-  id          Int        @id @default(autoincrement())
-  reporter_id Int
-  report_type String
-  content     String
-  status      String
-  created_at  DateTime   @default(now())
-  
-  // Relationships
-  reporter    users      @relation("ReporterReports", fields: [reporter_id], references: [id])
-  approvals   approval[]
+  id              String   @id @default(uuid())
+  reporter_id     String
+  title           String
+  content         String
+  status          String   @default("draft")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  reporter        users    @relation("ReporterReports", fields: [reporter_id], references: [id])
+  approvals       approval[]
+
+  @@index([reporter_id])
+  @@index([status])
 }
 
 model approval {
-  id          Int       @id @default(autoincrement())
-  approver_id Int
-  entity_type String
-  entity_id   Int
-  action      String
-  remarks     String?
-  created_at  DateTime  @default(now())
-  
-  // Relationships
-  approver    users     @relation("ApproverApprovals", fields: [approver_id], references: [id])
-  report      report?   @relation(fields: [entity_id], references: [id])
+  id              String   @id @default(uuid())
+  entity_id       String
+  approver_id     String
+  status          String   @default("pending")
+  comments        String?
+  created_at      DateTime @default(now())
+  approver        users    @relation("ApproverApprovals", fields: [approver_id], references: [id])
+  report          report   @relation(fields: [entity_id], references: [id])
+
+  @@index([entity_id])
+  @@index([approver_id])
+  @@index([status])
 }
 
 model auditLog {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  entity_type String
-  entity_id   Int
-  action      String
-  timestamp   DateTime @default(now())
-  
-  // Relationships
-  user        users    @relation(fields: [user_id], references: [id])
+  id            String   @id @default(uuid())
+  user_id       String
+  entity_type   String
+  action        String
+  details       Json?
+  timestamp     DateTime @default(now())
+  ip_address    String?
+  user_agent    String?
+  session_id    String?
+  status        String   @default("success")
+  error_details Json?
+  user          users    @relation("UserAuditLogs", fields: [user_id], references: [id])
+  session       userSession? @relation(fields: [session_id], references: [id])
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([entity_type])
+  @@index([action])
+  @@index([timestamp])
 }
 
-// Venue Models
 model Venue {
-  id          Int            @id @default(autoincrement())
-  name        String
-  description String?
-  address     String?
-  capacity    Int?
-  amenities   String?
-  entity_id   Int
-  created_at  DateTime       @default(now())
-  updated_at  DateTime       @updatedAt
-  
-  // Relationships
-  entity      entity         @relation(fields: [entity_id], references: [id])
-  bookings    VenueBooking[]
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  capacity        Int
+  amenities       String?
+  entity_id       String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  bookings        VenueBooking[]
+  entity          entity   @relation(fields: [entity_id], references: [id])
 
-  @@map("venues")
+  @@index([entity_id])
 }
 
 model VenueBooking {
-  id              Int       @id @default(autoincrement())
-  venue_id        Int
-  entity_id       Int       // Entity that booked the venue
+  id              String   @id @default(uuid())
   title           String
   description     String?
   start_time      DateTime
   end_time        DateTime
-  status          String    // pending, approved, rejected, cancelled
-  created_by      Int       // User ID who created the booking
-  approved_by     Int?      // User ID who approved the booking
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
-  
-  // Relationships
-  venue           Venue     @relation(fields: [venue_id], references: [id])
-  entity          entity    @relation(fields: [entity_id], references: [id])
-  creator         users     @relation("BookingCreator", fields: [created_by], references: [id])
-  approver        users?    @relation("BookingApprover", fields: [approved_by], references: [id])
+  status          String   @default("pending")
+  venue_id        String
+  entity_id       String
+  approved_by     String?
+  created_by      String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  approver        users?   @relation("BookingApprover", fields: [approved_by], references: [id])
+  creator         users    @relation("BookingCreator", fields: [created_by], references: [id])
+  entity          entity   @relation(fields: [entity_id], references: [id])
+  venue           Venue    @relation(fields: [venue_id], references: [id])
 
-  @@map("venue_bookings")
+  @@index([venue_id])
+  @@index([entity_id])
+  @@index([status])
 }

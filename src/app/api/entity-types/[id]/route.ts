@@ -14,13 +14,7 @@ export async function GET(
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const id = parseInt(params.id);
-    if (isNaN(id)) {
-      return NextResponse.json(
-        { message: 'Invalid entity type ID' },
-        { status: 400 }
-      );
-    }
+    const { id } = params;
 
     // Get entity type
     const entityType = await prisma.entityTypes.findUnique({

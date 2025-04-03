@@ -4,39 +4,75 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter } from 'next/navigation';
 
 interface Entity {
-  id: number;
+  id: string;
   name: string;
   description?: string;
-  entity_type_id: number;
+  entity_type_id: string;
+  parent_id?: string;
+  created_at: Date;
+  entityType: {
+    id: string;
+    name: string;
+    description?: string;
+    created_at: Date;
+  };
 }
 
 interface EntityRole {
-  id: number;
+  id: string;
   name: string;
   description?: string;
-  entity_id: number;
-  entity_type_id: number;
+  entity_id: string;
+  entity_type_id: string;
+  template_id?: string;
+  template?: {
+    id: string;
+    name: string;
+    permissions: string;
+  };
+  entityRolePermissions: {
+    permission: {
+      id: string;
+      name: string;
+      action: string;
+      scope?: string;
+      resource_type?: string;
+    };
+    resource: {
+      id: string;
+      name: string;
+      path: string;
+    };
+  }[];
+}
+
+interface EntityMembership {
+  id: string;
+  entityId: string;
+  entityName: string;
+  roleId: string;
+  roleName: string;
+  permissions: string[];
 }
 
 interface User {
-  id: number;
+  id: string;
   username: string;
-  email: string;
   isSystemAdmin: boolean;
-  entityMembers: {
-    entity: Entity;
-    entityRole: EntityRole;
-  }[];
+  entityMemberships: EntityMembership[];
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  error: string | null;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
-  isSystemAdmin: () => boolean;
-  hasEntityRole: (entityId: number, roleName: string) => boolean;
-  getEntityMemberships: () => { entity: Entity; role: EntityRole }[];
+  isAuthenticated: boolean;
+  isSystemAdmin: boolean;
+  hasPermission: (permission: string, entityId?: string) => boolean;
+  hasEntityRole: (roleName: string, entityId: string) => boolean;
+  hasEntityAccess: (entityId: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -44,28 +80,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is logged in
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('auth_token');
-
-    if (storedUser && token) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error('Error parsing stored user:', error);
-        localStorage.removeItem('user');
-        localStorage.removeItem('auth_token');
-      }
-    }
-
-    setIsLoading(false);
+    checkAuth();
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const checkAuth = async () => {
     try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      } else {
+        localStorage.removeItem('token');
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error);
+      localStorage.removeItem('token');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const login = async (username: string, password: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -75,54 +129,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Login failed');
+        throw new Error('Invalid credentials');
       }
 
-      const { user, token } = await response.json();
-
-      // Store user and token
-      localStorage.setItem('user', JSON.stringify(user));
-      localStorage.setItem('auth_token', token);
-
-      setUser(user);
-
-      // Redirect based on role
-      if (user.isSystemAdmin) {
-        router.push('/admin/dashboard');
-      } else {
-        router.push('/dashboard');
-      }
+      const data = await response.json();
+      localStorage.setItem('token', data.token);
+      setUser(data.user);
+      return true;
     } catch (error) {
-      console.error('Login error:', error);
-      throw error;
+      setError(error instanceof Error ? error.message : 'Login failed');
+      return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('auth_token');
+    localStorage.removeItem('token');
     setUser(null);
     router.push('/login');
   };
 
-  const isSystemAdmin = () => {
-    return user?.isSystemAdmin || false;
+  const hasPermission = (permission: string, entityId?: string): boolean => {
+    if (!user) return false;
+    if (user.isSystemAdmin) return true;
+
+    if (entityId) {
+      const membership = user.entityMemberships.find(m => m.entityId === entityId);
+      return membership?.permissions.includes(permission) ?? false;
+    }
+
+    return user.entityMemberships.some(m => m.permissions.includes(permission));
   };
 
-  const hasEntityRole = (entityId: number, roleName: string) => {
-    return user?.entityMembers?.some(
-      member => member.entity.id === entityId && member.entityRole.name === roleName
-    ) || false;
-  };
+  const hasEntityRole = (roleName: string, entityId: string): boolean => {
+    if (!user) return false;
+    if (user.isSystemAdmin) return true;
 
-  const getEntityMemberships = () => {
-    return (
-      user?.entityMembers.map(member => ({
-        entity: member.entity,
-        role: member.entityRole,
-      })) || []
+    return user.entityMemberships.some(
+      m => m.entityId === entityId && m.roleName === roleName
     );
+  };
+
+  const hasEntityAccess = (entityId: string): boolean => {
+    if (!user) return false;
+    if (user.isSystemAdmin) return true;
+
+    return user.entityMemberships.some(m => m.entityId === entityId);
   };
 
   return (
@@ -130,11 +183,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isLoading,
+        error,
         login,
         logout,
-        isSystemAdmin,
+        isAuthenticated: !!user,
+        isSystemAdmin: user?.isSystemAdmin ?? false,
+        hasPermission,
         hasEntityRole,
-        getEntityMemberships,
+        hasEntityAccess,
       }}
     >
       {children}

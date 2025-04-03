@@ -1,9 +1,5 @@
-import { Sidebar } from "@/components/sidebar";
+import { redirect } from 'next/navigation';
 
 export default function Home() {
-  return (
-    <div>
-      <Sidebar/>
-    </div>
-  );
-}
+  redirect('/login');
+} 

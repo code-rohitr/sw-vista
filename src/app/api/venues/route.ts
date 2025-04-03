@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyAuth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
 
+// Define the query type
+type VenueQuery = {
+  where?: {
+    entity_id?: number;
+  };
+  include: {
+    entity: {
+      select: {
+        id: true;
+        name: true;
+      };
+    };
+  };
+  orderBy: {
+    name: 'asc';
+  };
+};
 
 // GET /api/venues - Get all venues
 export async function GET(request: NextRequest) {
@@ -11,21 +29,13 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
+
     // Get query parameters
     const url = new URL(request.url);
     const entityId = url.searchParams.get('entityId');
 
     // Build query
-    const query: any = {};
-    
-    if (entityId) {
-      query.entity_id = parseInt(entityId);
-    }
-
-    // Get all venues
-    const venues = await prisma.venue.findMany({
-      where: query,
-      orderBy: { name: 'asc' },
+    const query: VenueQuery = {
       include: {
         entity: {
           select: {
@@ -33,8 +43,18 @@ export async function GET(request: NextRequest) {
             name: true
           }
         }
-      }
-    });
+      },
+      orderBy: { name: 'asc' }
+    };
+    
+    if (entityId) {
+      query.where = {
+        entity_id: parseInt(entityId)
+      };
+    }
+
+    // Get all venues
+    const venues = await prisma.venue.findMany(query);
 
     return NextResponse.json(venues);
   } catch (error) {
