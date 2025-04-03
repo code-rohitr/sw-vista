@@ -137,7 +137,9 @@ export default function UserActivityPage({ params }: { params: { id: string } })
                     <TableCell>
                       {log.details ? (
                         <pre className="whitespace-pre-wrap text-sm">
-                          {JSON.stringify(JSON.parse(log.details), null, 2)}
+                          {typeof log.details === 'string' 
+                            ? JSON.stringify(JSON.parse(log.details), null, 2)
+                            : JSON.stringify(log.details, null, 2)}
                         </pre>
                       ) : (
                         '-'

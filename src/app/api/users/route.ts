@@ -38,30 +38,49 @@ type UserQuery = {
 // GET /api/users - Get all users
 export async function GET(request: NextRequest) {
   try {
+    // Check if user has permission to view users
     const authResult = await requirePermission('view', '/api/users')(request);
     if ('isAuthorized' in authResult === false) {
       return authResult;
     }
 
+    // Fetch all users with their entity memberships and roles
     const users = await prisma.users.findMany({
-      include: {
+      select: {
+        id: true,
+        username: true,
+        email: true,
         entityMembers: {
-          include: {
-            entity: true,
-            entityRole: true,
+          select: {
+            id: true,
+            entity: {
+              select: {
+                id: true,
+                name: true,
+                entityType: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+            entityRole: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+              },
+            },
           },
         },
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: {
+        username: 'asc',
+      },
     });
 
-    // Remove password_hash from response
-    const sanitizedUsers = users.map(user => {
-      const { password_hash, ...userWithoutPassword } = user;
-      return userWithoutPassword;
-    });
-
-    return NextResponse.json(sanitizedUsers);
+    return NextResponse.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json(

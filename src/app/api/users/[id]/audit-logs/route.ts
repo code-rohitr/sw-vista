@@ -4,7 +4,7 @@ import { requirePermission } from '@/middleware/roleCheck';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check if user has permission to view audit logs
@@ -13,20 +13,35 @@ export async function GET(
       return authResult;
     }
 
-    const { id } = params;
+    // Await the params object before accessing its properties
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
 
     // Get audit logs for the user
     const auditLogs = await prisma.auditLog.findMany({
       where: {
         OR: [
           { user_id: id }, // Actions performed by the user
-          { entity_type: 'user', entity_id: id }, // Actions performed on the user
+          { 
+            AND: [
+              { entity_type: 'user' },
+              { details: { path: ['entityId'], equals: id } }
+            ]
+          }
         ],
       },
       orderBy: {
         created_at: 'desc',
       },
       take: 100, // Limit to last 100 logs
+      include: {
+        user: {
+          select: {
+            username: true,
+            email: true
+          }
+        }
+      }
     });
 
     return NextResponse.json(auditLogs);

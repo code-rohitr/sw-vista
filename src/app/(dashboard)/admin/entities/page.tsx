@@ -223,6 +223,12 @@ export default function EntitiesPage() {
                             <Users className="w-4 h-4 mr-2" />
                             Members
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/admin/entities/${entity.id}/permissions`)}
+                          >
+                            <Users className="w-4 h-4 mr-2" />
+                            Permissions
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-red-600"

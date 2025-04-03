@@ -26,31 +26,10 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
 
-    // Get query parameters
-    const { searchParams } = new URL(request.url);
-    const entityTypeId = searchParams.get('entityTypeId');
-
-    // Build the where clause
-    const where = entityTypeId ? {
-      entityType_id: entityTypeId,
-    } : {};
-
-    // Get entities with their types and parent
+    // Fetch all entities with their entity types
     const entities = await prisma.entity.findMany({
-      where,
       include: {
-        entityType: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        parent: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        entityType: true,
       },
       orderBy: {
         name: 'asc',
@@ -61,7 +40,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching entities:', error);
     return NextResponse.json(
-      { message: 'Failed to fetch entities' },
+      { error: 'Failed to fetch entities' },
       { status: 500 }
     );
   }

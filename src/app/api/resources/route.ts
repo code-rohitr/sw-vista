@@ -10,11 +10,14 @@ export async function GET(request: NextRequest) {
   try {
     // Check if user has permission to view resources
     const authResult = await requirePermission('view', '/api/resources')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    if (!authResult.isAuthorized) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    // Get all resources
+    // Fetch all resources
     const resources = await prisma.resources.findMany({
       orderBy: {
         name: 'asc',
@@ -25,7 +28,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching resources:', error);
     return NextResponse.json(
-      { message: 'Error fetching resources' },
+      { error: 'Failed to fetch resources' },
       { status: 500 }
     );
   }
