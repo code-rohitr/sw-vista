@@ -89,27 +89,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
       const response = await fetch('/api/auth/me', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include'
       });
 
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
-      } else {
-        localStorage.removeItem('token');
       }
     } catch (error) {
       console.error('Auth check failed:', error);
-      localStorage.removeItem('token');
     } finally {
       setIsLoading(false);
     }
@@ -126,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ username, password }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -133,7 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json();
-      localStorage.setItem('token', data.token);
       setUser(data.user);
       return true;
     } catch (error) {
@@ -145,7 +134,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
     setUser(null);
     router.push('/login');
   };
