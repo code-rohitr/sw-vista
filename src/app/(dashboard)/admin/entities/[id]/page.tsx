@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { use } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +33,8 @@ interface Entity {
   updatedAt: string;
 }
 
-export default function EntityDetailsPage({ params }: { params: { id: string } }) {
+export default function EntityDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const { toast } = useToast();
   const [entity, setEntity] = useState<Entity | null>(null);
@@ -43,7 +45,7 @@ export default function EntityDetailsPage({ params }: { params: { id: string } }
   useEffect(() => {
     const fetchEntity = async () => {
       try {
-        const response = await fetch(`/api/entities/${params.id}`, {
+        const response = await fetch(`/api/entities/${resolvedParams.id}`, {
           credentials: 'include',
         });
         if (!response.ok) {
@@ -63,12 +65,12 @@ export default function EntityDetailsPage({ params }: { params: { id: string } }
     };
 
     fetchEntity();
-  }, [params.id, toast]);
+  }, [resolvedParams.id, toast]);
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/entities/${params.id}`, {
+      const response = await fetch(`/api/entities/${resolvedParams.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });

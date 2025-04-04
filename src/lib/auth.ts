@@ -308,13 +308,11 @@ export async function getAllUserPermissions(userId: string) {
 // Verify authentication from request
 export async function verifyAuth(request: NextRequest) {
   try {
-    // Get token from Authorization header
+    // Get token from Authorization header or cookie
     const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return null;
-    }
+    const cookieToken = request.cookies.get('auth_token')?.value;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : cookieToken;
 
-    const token = authHeader.split(' ')[1];
     if (!token) {
       return null;
     }

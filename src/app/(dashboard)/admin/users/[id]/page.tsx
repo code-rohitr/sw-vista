@@ -2,12 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
+import { use } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -15,8 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, ArrowLeft } from 'lucide-react';
 
 interface User {
   id: string;
@@ -40,6 +38,7 @@ interface User {
       name: string;
     };
   }[];
+  created_at: string;
 }
 
 interface EntityType {
@@ -53,51 +52,39 @@ interface Entity {
   entityTypeId: string;
 }
 
-interface Role {
+interface EntityRole {
   id: string;
   name: string;
 }
 
-export default function EditUserPage({ params }: { params: { id: string } }) {
+export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const router = useRouter();
+  const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    isSystemAdmin: false,
-  });
   const [entityTypes, setEntityTypes] = useState<EntityType[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [roles, setRoles] = useState<EntityRole[]>([]);
   const [selectedEntityType, setSelectedEntityType] = useState<string>('');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  const router = useRouter();
-  const { toast } = useToast();
-
   const fetchUser = useCallback(async () => {
     try {
-      const response = await fetch(`/api/users/${params.id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+      console.log('Fetching user with ID:', resolvedParams.id);
+      const response = await fetch(`/api/users/${resolvedParams.id}`, {
+        credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch user');
+      if (!response.ok) {
+        throw new Error('Failed to fetch user');
+      }
       const data = await response.json();
+      console.log('User data received:', data);
       setUser(data);
-      setFormData({
-        username: data.username,
-        email: data.email,
-        password: '',
-        confirmPassword: '',
-        isSystemAdmin: data.isSystemAdmin,
-      });
 
-      if (data.entityMembers.length > 0) {
+      if (data.entityMembers && data.entityMembers.length > 0) {
         const membership = data.entityMembers[0];
         setSelectedEntityType(membership.entity.entityType.id);
         setSelectedEntity(membership.entity_id);
@@ -106,30 +93,31 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
         await fetchRoles(membership.entity_id);
       }
     } catch (error) {
+      console.error('Error fetching user:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch user details',
+        description: 'Failed to fetch user details. Please try again.',
         variant: 'destructive',
       });
-    } finally {
-      setIsLoading(false);
     }
-  }, [params.id, toast]);
+  }, [resolvedParams.id, toast]);
 
   const fetchEntityTypes = useCallback(async () => {
     try {
       const response = await fetch('/api/entity-types', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch entity types');
+      if (!response.ok) {
+        throw new Error('Failed to fetch entity types');
+      }
       const data = await response.json();
+      console.log('Entity types received:', data);
       setEntityTypes(data);
     } catch (error) {
+      console.error('Error fetching entity types:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch entity types',
+        description: 'Failed to fetch entity types. Please try again.',
         variant: 'destructive',
       });
     }
@@ -138,17 +126,19 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
   const fetchEntities = useCallback(async (entityTypeId: string) => {
     try {
       const response = await fetch(`/api/entities?entityTypeId=${entityTypeId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch entities');
+      if (!response.ok) {
+        throw new Error('Failed to fetch entities');
+      }
       const data = await response.json();
+      console.log('Entities received:', data);
       setEntities(data);
     } catch (error) {
+      console.error('Error fetching entities:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch entities',
+        description: 'Failed to fetch entities. Please try again.',
         variant: 'destructive',
       });
     }
@@ -156,53 +146,59 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
 
   const fetchRoles = useCallback(async (entityId: string) => {
     try {
-      const response = await fetch(`/api/entity-roles?entityId=${entityId}&entityTypeId=${selectedEntityType}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+      const response = await fetch(`/api/entities/${entityId}/roles`, {
+        credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch roles');
+      if (!response.ok) {
+        throw new Error('Failed to fetch roles');
+      }
       const data = await response.json();
+      console.log('Roles received:', data);
       setRoles(data);
     } catch (error) {
+      console.error('Error fetching roles:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch roles',
+        description: 'Failed to fetch roles. Please try again.',
         variant: 'destructive',
       });
     }
-  }, [toast, selectedEntityType]);
+  }, [toast]);
 
   useEffect(() => {
-    fetchUser();
-    fetchEntityTypes();
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        await Promise.all([fetchUser(), fetchEntityTypes()]);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, [fetchUser, fetchEntityTypes]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (formData.password && formData.password !== formData.confirmPassword) {
-      toast({
-        title: 'Error',
-        description: 'Passwords do not match',
-        variant: 'destructive',
-      });
+    if (!user) {
+      console.log('Cannot submit: user is missing');
       return;
     }
 
     setIsSaving(true);
-
     try {
-      const response = await fetch(`/api/users/${params.id}`, {
+      const response = await fetch(`/api/users/${resolvedParams.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
-          ...formData,
-          entityId: selectedEntity,
-          roleId: selectedRole,
+          username: user.username,
+          email: user.email,
+          entity_id: selectedEntity,
+          entity_role_id: selectedRole,
         }),
       });
 
@@ -217,6 +213,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
 
       router.push('/admin/users');
     } catch (error) {
+      console.error('Error updating user:', error);
       toast({
         title: 'Error',
         description: 'Failed to update user. Please try again.',
@@ -238,168 +235,146 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
     );
   }
 
+  console.log('Current user state:', user);
+  console.log('Current entity types:', entityTypes);
+  console.log('Current entities:', entities);
+  console.log('Current roles:', roles);
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-muted-foreground">User not found</div>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => router.push('/admin/users')}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Users
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center space-x-4">
-        <Button
-          variant="ghost"
-          onClick={() => router.back()}
-          className="flex items-center"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
-        <h1 className="text-3xl font-bold">Edit User</h1>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/admin/users')}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <h1 className="text-3xl font-bold">Edit User</h1>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>User Information</CardTitle>
+          <CardTitle>User Details</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid gap-4">
+              <div>
+                <label htmlFor="username" className="text-sm font-medium">
+                  Username
+                </label>
                 <Input
                   id="username"
-                  value={formData.username}
+                  value={user.username}
                   onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
+                    setUser({ ...user, username: e.target.value })
                   }
                   required
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+              <div>
+                <label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </label>
                 <Input
                   id="email"
                   type="email"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
+                  value={user.email}
+                  onChange={(e) => setUser({ ...user, email: e.target.value })}
                   required
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">New Password (optional)</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                />
+              <div>
+                <label htmlFor="entityType" className="text-sm font-medium">
+                  Entity Type
+                </label>
+                <Select
+                  value={selectedEntityType}
+                  onValueChange={(value) => {
+                    setSelectedEntityType(value);
+                    fetchEntities(value);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select entity type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {entityTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.id}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={(e) =>
-                    setFormData({ ...formData, confirmPassword: e.target.value })
-                  }
-                />
+              <div>
+                <label htmlFor="entity" className="text-sm font-medium">
+                  Entity
+                </label>
+                <Select
+                  value={selectedEntity}
+                  onValueChange={(value) => {
+                    setSelectedEntity(value);
+                    fetchRoles(value);
+                  }}
+                  disabled={!selectedEntityType}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select entity" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {entities.map((entity) => (
+                      <SelectItem key={entity.id} value={entity.id}>
+                        {entity.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label htmlFor="role" className="text-sm font-medium">
+                  Role
+                </label>
+                <Select
+                  value={selectedRole}
+                  onValueChange={setSelectedRole}
+                  disabled={!selectedEntity}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isSystemAdmin"
-                  checked={formData.isSystemAdmin}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, isSystemAdmin: checked as boolean })
-                  }
-                />
-                <Label htmlFor="isSystemAdmin">System Administrator</Label>
-              </div>
-
-              {!formData.isSystemAdmin && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Entity Type</Label>
-                    <Select
-                      value={selectedEntityType}
-                      onValueChange={(value) => {
-                        setSelectedEntityType(value);
-                        fetchEntities(value);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select entity type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {entityTypes.map((type) => (
-                          <SelectItem key={type.id} value={type.id}>
-                            {type.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Entity</Label>
-                    <Select
-                      value={selectedEntity}
-                      onValueChange={(value) => {
-                        setSelectedEntity(value);
-                        fetchRoles(value);
-                      }}
-                      disabled={!selectedEntityType}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select entity" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {entities.map((entity) => (
-                          <SelectItem key={entity.id} value={entity.id}>
-                            {entity.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Role</Label>
-                    <Select
-                      value={selectedRole}
-                      onValueChange={setSelectedRole}
-                      disabled={!selectedEntity}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {roles.map((role) => (
-                          <SelectItem key={role.id} value={role.id}>
-                            {role.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-end space-x-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.back()}
-                disabled={isSaving}
-              >
-                Cancel
-              </Button>
+            <div className="flex justify-end">
               <Button type="submit" disabled={isSaving}>
                 {isSaving ? (
                   <>
