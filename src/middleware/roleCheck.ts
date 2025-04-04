@@ -18,16 +18,17 @@ type AuthResult =
 export function requirePermission(action: string, resourcePath: string, entityIdParam?: string) {
   return async (request: NextRequest): Promise<AuthResult> => {
     try {
-      // Get token from header
-      const authHeader = request.headers.get('authorization');
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      // Get token from cookie or header
+      const cookieToken = request.cookies.get('auth_token')?.value;
+      const headerToken = request.headers.get('authorization')?.split(' ')[1];
+      const token = cookieToken || headerToken;
+
+      if (!token) {
         return NextResponse.json(
           { message: 'Unauthorized' },
           { status: 401 }
         );
       }
-      
-      const token = authHeader.split(' ')[1];
       
       // Verify token
       const decoded = verifyToken(token);
@@ -38,82 +39,6 @@ export function requirePermission(action: string, resourcePath: string, entityId
         );
       }
 
-      // If user is system admin, allow access
-      if (decoded.isSystemAdmin) {
-        const user = await prisma.users.findUnique({
-          where: { id: decoded.id },
-          include: {
-            entityMembers: {
-              include: {
-                entity: {
-                  include: {
-                    entityType: true,
-                    parent: true
-                  }
-                },
-                entityRole: {
-                  include: {
-                    template: true,
-                    entityRolePermissions: {
-                      include: {
-                        permission: true,
-                        resource: true
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        });
-
-        if (!user) {
-          return NextResponse.json(
-            { message: 'Unauthorized: User not found' },
-            { status: 401 }
-          );
-        }
-
-        return {
-          isAuthorized: true,
-          user: {
-            ...user,
-            isSystemAdmin: true
-          }
-        };
-      }
-      
-      // Get entity ID from request if entityIdParam is provided
-      let entityId: string | undefined;
-      if (entityIdParam) {
-        // Extract entity ID from URL or request body
-        const url = new URL(request.url);
-        const pathParts = url.pathname.split('/');
-        const paramIndex = pathParts.findIndex(part => part === entityIdParam);
-        
-        if (paramIndex !== -1 && paramIndex < pathParts.length - 1) {
-          entityId = pathParts[paramIndex + 1];
-        } else {
-          // Try to get from query params
-          entityId = url.searchParams.get(entityIdParam) || undefined;
-        }
-      }
-      
-      // Check if user has permission
-      const hasPermission = await checkPermission(
-        decoded.id,
-        action,
-        resourcePath,
-        entityId
-      );
-      
-      if (!hasPermission) {
-        return NextResponse.json(
-          { message: 'Forbidden: Insufficient permissions' },
-          { status: 403 }
-        );
-      }
-      
       // Get user with system roles and entity memberships for request context
       const user = await prisma.users.findUnique({
         where: { id: decoded.id },
@@ -146,6 +71,27 @@ export function requirePermission(action: string, resourcePath: string, entityId
         return NextResponse.json(
           { message: 'Unauthorized: User not found' },
           { status: 401 }
+        );
+      }
+
+      // Check if user is System Admin
+      const isAdmin = await isSystemAdmin(user.id);
+      if (isAdmin) {
+        return {
+          isAuthorized: true,
+          user: {
+            ...user,
+            isSystemAdmin: true
+          }
+        };
+      }
+
+      // Check permissions for non-admin users
+      const hasPermission = await checkPermission(user.id, action, resourcePath);
+      if (!hasPermission) {
+        return NextResponse.json(
+          { message: 'Forbidden: Insufficient permissions' },
+          { status: 403 }
         );
       }
 

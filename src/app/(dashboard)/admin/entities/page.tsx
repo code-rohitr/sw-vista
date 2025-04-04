@@ -61,9 +61,7 @@ export default function EntitiesPage() {
   const fetchEntities = useCallback(async () => {
     try {
       const response = await fetch('/api/entities', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include', // Include cookies in the request
       });
       if (!response.ok) {
         throw new Error('Failed to fetch entities');
@@ -96,9 +94,7 @@ export default function EntitiesPage() {
     try {
       const response = await fetch(`/api/entities/${entityToDelete}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include', // Include cookies in the request
       });
 
       if (!response.ok) {
@@ -121,6 +117,10 @@ export default function EntitiesPage() {
       setIsDeleting(false);
       setEntityToDelete(null);
     }
+  };
+
+  const handleRowClick = (entityId: string) => {
+    router.push(`/admin/entities/${entityId}`);
   };
 
   const filteredEntities = entities.filter(entity =>
@@ -192,7 +192,11 @@ export default function EntitiesPage() {
                 </TableRow>
               ) : (
                 filteredEntities.map((entity) => (
-                  <TableRow key={entity.id}>
+                  <TableRow 
+                    key={entity.id}
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => handleRowClick(entity.id)}
+                  >
                     <TableCell className="font-medium">{entity.name}</TableCell>
                     <TableCell>{entity.entityType.name}</TableCell>
                     <TableCell>{entity.parent?.name || '-'}</TableCell>
@@ -205,26 +209,39 @@ export default function EntitiesPage() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
+                          <Button 
+                            variant="ghost" 
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/entities/${entity.id}`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/admin/entities/${entity.id}`);
+                            }}
                           >
                             <Edit className="w-4 h-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/entities/${entity.id}/members`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/admin/entities/${entity.id}/members`);
+                            }}
                           >
                             <Users className="w-4 h-4 mr-2" />
                             Members
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/entities/${entity.id}/permissions`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/admin/entities/${entity.id}/permissions`);
+                            }}
                           >
                             <Users className="w-4 h-4 mr-2" />
                             Permissions
@@ -232,7 +249,10 @@ export default function EntitiesPage() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-red-600"
-                            onClick={() => handleDelete(entity.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(entity.id);
+                            }}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete
@@ -248,20 +268,21 @@ export default function EntitiesPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!entityToDelete} onOpenChange={(open) => !open && setEntityToDelete(null)}>
+      <AlertDialog open={!!entityToDelete} onOpenChange={() => setEntityToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the entity and all its child entities.
+              This action cannot be undone. This will permanently delete the entity
+              and all associated data.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={confirmDelete} 
-              className="bg-red-600 hover:bg-red-700"
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
               disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? (
                 <>

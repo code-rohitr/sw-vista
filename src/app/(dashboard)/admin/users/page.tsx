@@ -64,9 +64,7 @@ export default function UsersPage() {
   const fetchUsers = useCallback(async () => {
     try {
       const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include', // Important: Include cookies in the request
       });
       if (!response.ok) {
         throw new Error('Failed to fetch users');
@@ -99,9 +97,7 @@ export default function UsersPage() {
     try {
       const response = await fetch(`/api/users/${userToDelete}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include', // Important: Include cookies in the request
       });
 
       if (!response.ok) {
@@ -112,7 +108,6 @@ export default function UsersPage() {
         title: 'Success',
         description: 'User deleted successfully',
       });
-
       fetchUsers(); // Refresh the list
     } catch (error) {
       toast({
@@ -124,6 +119,10 @@ export default function UsersPage() {
       setIsDeleting(false);
       setUserToDelete(null);
     }
+  };
+
+  const handleRowClick = (userId: string) => {
+    router.push(`/admin/users/${userId}`);
   };
 
   const filteredUsers = users.filter(user =>
@@ -195,7 +194,11 @@ export default function UsersPage() {
                 </TableRow>
               ) : (
                 filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
+                  <TableRow 
+                    key={user.id}
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => handleRowClick(user.id)}
+                  >
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
@@ -222,20 +225,30 @@ export default function UsersPage() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
+                          <Button 
+                            variant="ghost" 
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/users/${user.id}`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/admin/users/${user.id}`);
+                            }}
                           >
                             <Edit className="w-4 h-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/users/${user.id}/activity`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/admin/users/${user.id}/activity`);
+                            }}
                           >
                             <History className="w-4 h-4 mr-2" />
                             Activity Log
@@ -243,7 +256,10 @@ export default function UsersPage() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-red-600"
-                            onClick={() => handleDelete(user.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(user.id);
+                            }}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete
@@ -259,20 +275,21 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+      <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the user.
+              This action cannot be undone. This will permanently delete the user
+              and all associated data.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={confirmDelete} 
-              className="bg-red-600 hover:bg-red-700"
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
               disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? (
                 <>
