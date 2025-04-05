@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyAuth } from '@/lib/auth';
+import { requirePermission } from '@/middleware/roleCheck';
 
 // GET /api/entity-types/[id] - Get a specific entity type
 export async function GET(
@@ -38,59 +39,64 @@ export async function GET(
   }
 }
 
-// PUT /api/entity-types/[id] - Update a specific entity type
+// PUT /api/entity-types/[id] - Update an entity type
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    // Check if user has permission to update entity types
+    const authResult = await requirePermission('update', '/api/entity-types')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
-    // Check if user is System Admin
-    if (!user.isSystemAdmin) {
-      return NextResponse.json(
-        { message: 'Only System Admins can update entity types' },
-        { status: 403 }
-      );
-    }
+    const { name, description } = await request.json();
 
-    const id = parseInt(params.id);
-    if (isNaN(id)) {
+    // Validate required fields
+    if (!name) {
       return NextResponse.json(
-        { message: 'Invalid entity type ID' },
+        { message: 'Name is required' },
         { status: 400 }
       );
     }
 
     // Check if entity type exists
-    const existingEntityType = await prisma.entityTypes.findUnique({
-      where: { id }
+    const existingType = await prisma.entityTypes.findUnique({
+      where: { id: params.id }
     });
 
-    if (!existingEntityType) {
+    if (!existingType) {
       return NextResponse.json(
         { message: 'Entity type not found' },
         { status: 404 }
       );
     }
 
-    // Get request body
-    const { name, description } = await request.json();
-
-    // Update entity type
-    const updatedEntityType = await prisma.entityTypes.update({
-      where: { id },
+    // Update the entity type
+    const entityType = await prisma.entityTypes.update({
+      where: { id: params.id },
       data: {
-        name: name || existingEntityType.name,
-        description: description !== undefined ? description : existingEntityType.description
-      }
+        name,
+        description,
+      },
     });
 
-    return NextResponse.json(updatedEntityType);
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: authResult.user.id,
+        entity_type: 'entityType',
+        action: 'update',
+        details: JSON.stringify({
+          id: params.id,
+          name,
+          description,
+        }),
+      },
+    });
+
+    return NextResponse.json(entityType);
   } catch (error) {
     console.error('Error updating entity type:', error);
     return NextResponse.json(
@@ -100,49 +106,58 @@ export async function PUT(
   }
 }
 
-// DELETE /api/entity-types/[id] - Delete a specific entity type
+// DELETE /api/entity-types/[id] - Delete an entity type
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Check if user is System Admin
-    if (!user.isSystemAdmin) {
-      return NextResponse.json(
-        { message: 'Only System Admins can delete entity types' },
-        { status: 403 }
-      );
-    }
-
-    const id = parseInt(params.id);
-    if (isNaN(id)) {
-      return NextResponse.json(
-        { message: 'Invalid entity type ID' },
-        { status: 400 }
-      );
+    // Check if user has permission to delete entity types
+    const authResult = await requirePermission('delete', '/api/entity-types')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
     // Check if entity type exists
-    const existingEntityType = await prisma.entityTypes.findUnique({
-      where: { id }
+    const existingType = await prisma.entityTypes.findUnique({
+      where: { id: params.id },
+      include: {
+        entities: true,
+        entityRoles: true,
+      },
     });
 
-    if (!existingEntityType) {
+    if (!existingType) {
       return NextResponse.json(
         { message: 'Entity type not found' },
         { status: 404 }
       );
     }
 
-    // Delete entity type
+    // Check if entity type has any entities or roles
+    if (existingType.entities.length > 0 || existingType.entityRoles.length > 0) {
+      return NextResponse.json(
+        { message: 'Cannot delete entity type with existing entities or roles' },
+        { status: 400 }
+      );
+    }
+
+    // Delete the entity type
     await prisma.entityTypes.delete({
-      where: { id }
+      where: { id: params.id },
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: authResult.user.id,
+        entity_type: 'entityType',
+        action: 'delete',
+        details: JSON.stringify({
+          id: params.id,
+          name: existingType.name,
+        }),
+      },
     });
 
     return NextResponse.json({ message: 'Entity type deleted successfully' });

@@ -306,12 +306,20 @@ export async function getAllUserPermissions(userId: string) {
 }
 
 // Verify authentication from request
-export async function verifyAuth(request: NextRequest) {
+export async function verifyAuth(request?: NextRequest) {
   try {
-    // Get token from Authorization header or cookie
-    const authHeader = request.headers.get('Authorization');
-    const cookieToken = request.cookies.get('auth_token')?.value;
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : cookieToken;
+    let token: string | undefined;
+    
+    if (request) {
+      // Get token from Authorization header or cookie
+      const authHeader = request.headers.get('Authorization');
+      const cookieToken = request.cookies.get('auth_token')?.value;
+      token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : cookieToken;
+    } else {
+      // If no request is provided, try to get token from cookies
+      const cookies = require('next/headers').cookies;
+      token = cookies().get('auth_token')?.value;
+    }
 
     if (!token) {
       return null;

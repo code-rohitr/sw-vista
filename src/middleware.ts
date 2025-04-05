@@ -36,10 +36,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Get token from Authorization header or cookie
-  const headerToken = request.headers.get('authorization')?.split(' ')[1]
-  const cookieToken = request.cookies.get('auth_token')?.value
-  const token = headerToken || cookieToken
+  // Get token from cookie only
+  const token = request.cookies.get('auth_token')?.value
 
   // If it's a public path, allow access
   if (isPublicPath) {
@@ -76,19 +74,6 @@ export function middleware(request: NextRequest) {
     // Add user info to headers for downstream use
     response.headers.set('X-User-ID', decoded.id)
     response.headers.set('X-User-Role', decoded.isSystemAdmin ? 'admin' : 'user')
-    
-    // If token was from header, set it as a cookie for consistency
-    if (headerToken && !cookieToken) {
-      response.cookies.set({
-        name: 'auth_token',
-        value: headerToken,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 // 24 hours
-      })
-    }
     
     return response
   } catch (error) {

@@ -1,34 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requirePermission } from '@/middleware/roleCheck';
+import { verifyAuth } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 /**
  * GET /api/resources
  * Get all resources
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Check if user has permission to view resources
-    const authResult = await requirePermission('view', '/api/resources')(request);
-    if (!authResult.isAuthorized) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const user = await verifyAuth();
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch all resources
-    const resources = await prisma.resources.findMany({
-      orderBy: {
-        name: 'asc',
-      },
-    });
+    const resources = await prisma.resources.findMany();
 
     return NextResponse.json(resources);
   } catch (error) {
     console.error('Error fetching resources:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch resources' },
+      { message: 'Failed to fetch resources' },
       { status: 500 }
     );
   }
@@ -40,17 +32,17 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check if user has permission to create resources
-    const authResult = await requirePermission('create', '/api/resources')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    const user = await verifyAuth();
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get request body
-    const body = await request.json();
-    const { name, path, description } = body;
+    // Check if user has permission to create resources
+    await requirePermission(user.id, 'create', 'resources');
 
-    // Validate required fields
+    const body = await request.json();
+    const { name, path } = body;
+
     if (!name || !path) {
       return NextResponse.json(
         { message: 'Name and path are required' },
@@ -58,47 +50,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if resource already exists
-    const existingResource = await prisma.resources.findFirst({
-      where: {
-        OR: [
-          { name },
-          { path },
-        ],
-      },
-    });
-
-    if (existingResource) {
-      return NextResponse.json(
-        { message: 'Resource with this name or path already exists' },
-        { status: 400 }
-      );
-    }
-
-    // Create resource
     const resource = await prisma.resources.create({
       data: {
         name,
         path,
-        description,
       },
     });
 
-    // Log action
+    // Log the action
     await prisma.auditLogs.create({
       data: {
-        user_id: authResult.user.id,
-        entity_type: 'resource',
-        entity_id: resource.id,
-        action: 'create_resource',
+        user_id: user.id,
+        entity_type: 'resources',
+        action: 'create',
+        details: {
+          resource_id: resource.id,
+          name: resource.name,
+          path: resource.path,
+        },
       },
     });
 
-    return NextResponse.json(resource, { status: 201 });
+    return NextResponse.json(resource);
   } catch (error) {
     console.error('Error creating resource:', error);
     return NextResponse.json(
-      { message: 'Error creating resource' },
+      { message: 'Failed to create resource' },
       { status: 500 }
     );
   }

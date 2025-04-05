@@ -17,6 +17,9 @@ import {
   X,
   Moon,
   Sun,
+  Calendar,
+  Layers,
+  UserCog,
 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -91,6 +94,24 @@ export default function DashboardLayout({
       href: '/admin/entities',
       icon: Building2,
       show: isSystemAdmin,
+    },
+    {
+      name: 'Entity Types',
+      href: '/admin/entity-types',
+      icon: Layers,
+      show: isSystemAdmin,
+    },
+    {
+      name: 'Roles',
+      href: '/admin/roles',
+      icon: UserCog,
+      show: isSystemAdmin,
+    },
+    {
+      name: 'Venues',
+      href: '/venues',
+      icon: Calendar,
+      show: true,
     },
     {
       name: 'Permissions',

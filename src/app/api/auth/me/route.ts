@@ -4,17 +4,17 @@ import { getUserById } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
+    // Get token from cookie only
+    const token = request.cookies.get('auth_token')?.value;
+
+    if (!token) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.split(' ')[1];
     const decoded = verifyToken(token);
-
     if (!decoded) {
       return NextResponse.json(
         { error: 'Invalid token' },

@@ -3,55 +3,41 @@ import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/middleware/roleCheck';
 import { hasEntityAccess } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
+import { verifyAuth } from '@/lib/auth';
 
 // GET /api/entities/[id] - Get a specific entity
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check if user has permission to view entities
-    const authResult = await requirePermission('view', '/api/entities')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    // Verify authentication
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    // Await params to get the ID
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
 
     // Get entity with its type, parent, and children
     const entity = await prisma.entity.findUnique({
       where: { id },
       include: {
-        entityType: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        parent: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        entityType: true,
+        parent: true,
         children: {
-          select: {
-            id: true,
-            name: true,
-            entityType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
+          include: {
+            entityType: true
+          }
+        }
+      }
     });
 
     if (!entity) {
       return NextResponse.json(
-        { error: 'Entity not found' },
+        { message: 'Entity not found' },
         { status: 404 }
       );
     }
@@ -60,7 +46,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching entity:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch entity' },
+      { message: 'Failed to fetch entity' },
       { status: 500 }
     );
   }

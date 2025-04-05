@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyAuth } from '@/lib/auth';
+import { requirePermission } from '@/middleware/roleCheck';
 
 // GET /api/entity-roles/[id] - Get a specific entity role
 export async function GET(
@@ -54,59 +55,65 @@ export async function GET(
   }
 }
 
-// PUT /api/entity-roles/[id] - Update a specific entity role
+// PUT /api/entity-roles/[id] - Update a role
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    // Check if user has permission to update roles
+    const authResult = await requirePermission('update', '/api/entity-roles')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
-    // Check if user is System Admin
-    if (!user.isSystemAdmin) {
-      return NextResponse.json(
-        { message: 'Only System Admins can update entity roles' },
-        { status: 403 }
-      );
-    }
+    const { name, description, entity_type_id, entityTypeId } = await request.json();
+    
+    // Use entity_type_id if provided, otherwise fall back to entityTypeId
+    const entityTypeIdToUse = entity_type_id || entityTypeId;
 
-    const id = parseInt(params.id);
-    if (isNaN(id)) {
+    // Validate required fields
+    if (!name || !entityTypeIdToUse) {
       return NextResponse.json(
-        { message: 'Invalid entity role ID' },
+        { message: 'Name and entity type ID are required' },
         { status: 400 }
       );
     }
 
-    // Check if entity role exists
+    // Check if role exists
     const existingRole = await prisma.entityRoles.findUnique({
-      where: { id }
+      where: { id: params.id }
     });
 
     if (!existingRole) {
       return NextResponse.json(
-        { message: 'Entity role not found' },
+        { message: 'Role not found' },
         { status: 404 }
       );
     }
 
-    // Get request body
-    const { name, description } = await request.json();
+    // Check if entity type exists
+    const entityType = await prisma.entityTypes.findUnique({
+      where: { id: entityTypeIdToUse }
+    });
 
-    // Update entity role
-    const updatedRole = await prisma.entityRoles.update({
-      where: { id },
+    if (!entityType) {
+      return NextResponse.json(
+        { message: 'Entity type not found' },
+        { status: 404 }
+      );
+    }
+
+    // Update the role
+    const role = await prisma.entityRoles.update({
+      where: { id: params.id },
       data: {
-        name: name || existingRole.name,
-        description: description !== undefined ? description : existingRole.description,
+        name,
+        description,
+        entity_type_id: entityTypeIdToUse,
       },
       include: {
         entityType: true,
-        entity: true,
         entityRolePermissions: {
           include: {
             permission: true,
@@ -116,86 +123,95 @@ export async function PUT(
       },
     });
 
-    // Log action
+    // Log the action
     await prisma.auditLog.create({
       data: {
-        user_id: user.id,
-        entity_type: 'entity_role',
-        entity_id: updatedRole.id,
-        action: 'update_entity_role',
+        user_id: authResult.user.id,
+        entity_type: 'entityRole',
+        action: 'update',
+        details: JSON.stringify({
+          id: params.id,
+          name,
+          description,
+          entityTypeId: entityTypeIdToUse,
+        }),
       },
     });
 
-    return NextResponse.json(updatedRole);
+    return NextResponse.json(role);
   } catch (error) {
-    console.error('Error updating entity role:', error);
+    console.error('Error updating role:', error);
     return NextResponse.json(
-      { message: 'Failed to update entity role' },
+      { message: 'Failed to update role' },
       { status: 500 }
     );
   }
 }
 
-// DELETE /api/entity-roles/[id] - Delete a specific entity role
+// DELETE /api/entity-roles/[id] - Delete a role
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    // Check if user has permission to delete roles
+    const authResult = await requirePermission('delete', '/api/entity-roles')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
-    // Check if user is System Admin
-    if (!user.isSystemAdmin) {
-      return NextResponse.json(
-        { message: 'Only System Admins can delete entity roles' },
-        { status: 403 }
-      );
-    }
-
-    const id = parseInt(params.id);
-    if (isNaN(id)) {
-      return NextResponse.json(
-        { message: 'Invalid entity role ID' },
-        { status: 400 }
-      );
-    }
-
-    // Check if entity role exists
+    // Check if role exists
     const existingRole = await prisma.entityRoles.findUnique({
-      where: { id }
+      where: { id: params.id },
+      include: {
+        entityMembers: true,
+        entityRolePermissions: true,
+      },
     });
 
     if (!existingRole) {
       return NextResponse.json(
-        { message: 'Entity role not found' },
+        { message: 'Role not found' },
         { status: 404 }
       );
     }
 
-    // Delete entity role
-    await prisma.entityRoles.delete({
-      where: { id }
+    // Check if role has any members
+    if (existingRole.entityMembers.length > 0) {
+      return NextResponse.json(
+        { message: 'Cannot delete role with active members' },
+        { status: 400 }
+      );
+    }
+
+    // Delete role permissions first
+    await prisma.entityRolePermissions.deleteMany({
+      where: { entity_role_id: params.id },
     });
 
-    // Log action
+    // Delete the role
+    await prisma.entityRoles.delete({
+      where: { id: params.id },
+    });
+
+    // Log the action
     await prisma.auditLog.create({
       data: {
-        user_id: user.id,
-        entity_type: 'entity_role',
-        entity_id: id,
-        action: 'delete_entity_role',
+        user_id: authResult.user.id,
+        entity_type: 'entityRole',
+        action: 'delete',
+        details: JSON.stringify({
+          id: params.id,
+          name: existingRole.name,
+        }),
       },
     });
 
-    return NextResponse.json({ message: 'Entity role deleted successfully' });
+    return NextResponse.json({ message: 'Role deleted successfully' });
   } catch (error) {
-    console.error('Error deleting entity role:', error);
+    console.error('Error deleting role:', error);
     return NextResponse.json(
-      { message: 'Failed to delete entity role' },
+      { message: 'Failed to delete role' },
       { status: 500 }
     );
   }

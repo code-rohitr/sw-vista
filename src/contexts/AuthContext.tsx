@@ -90,15 +90,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAuth = async () => {
     try {
       const response = await fetch('/api/auth/me', {
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
+      } else {
+        // If the token is invalid or expired, clear the user state
+        setUser(null);
+        // Redirect to login if not already there
+        if (window.location.pathname !== '/login') {
+          router.push('/login');
+        }
       }
     } catch (error) {
       console.error('Auth check failed:', error);
+      setUser(null);
+      if (window.location.pathname !== '/login') {
+        router.push('/login');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -133,13 +147,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
-    fetch('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include'
-    });
-    setUser(null);
-    router.push('/login');
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      router.push('/login');
+    }
   };
 
   const hasPermission = (permission: string, entityId?: string): boolean => {

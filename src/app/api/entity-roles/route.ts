@@ -24,23 +24,18 @@ type EntityRoleQuery = {
 };
 
 // GET /api/entity-roles - Get all entity roles
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
+    const user = await verifyAuth();
     if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get query parameters
-    const url = new URL(request.url);
-    const entityTypeId = url.searchParams.get('entityTypeId');
-    const entityId = url.searchParams.get('entityId');
-
-    // Build query
-    const query: EntityRoleQuery = {
+    const roles = await prisma.entityRoles.findMany({
       include: {
         entityType: true,
+        entity: true,
+        template: true,
         entityRolePermissions: {
           include: {
             permission: true,
@@ -48,28 +43,13 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: { created_at: 'desc' }
-    };
+    });
 
-    // Add filters if provided
-    if (entityTypeId || entityId) {
-      query.where = {};
-      if (entityTypeId) {
-        query.where.entityType_id = entityTypeId;
-      }
-      if (entityId) {
-        query.where.entity_id = entityId;
-      }
-    }
-
-    // Get all entity roles
-    const entityRoles = await prisma.entityRoles.findMany(query);
-
-    return NextResponse.json(entityRoles);
+    return NextResponse.json(roles);
   } catch (error) {
-    console.error('Error fetching entity roles:', error);
+    console.error('Error fetching roles:', error);
     return NextResponse.json(
-      { message: 'Failed to fetch entity roles' },
+      { error: 'Failed to fetch roles' },
       { status: 500 }
     );
   }
@@ -93,7 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get request body
-    const { name, description, entity_type_id } = await request.json();
+    const { name, description, entity_type_id, entity_id, template_id } = await request.json();
 
     // Validate input
     if (!name) {
@@ -110,6 +90,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!entity_id) {
+      return NextResponse.json(
+        { message: 'Entity ID is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!template_id) {
+      return NextResponse.json(
+        { message: 'Template ID is required' },
+        { status: 400 }
+      );
+    }
+
     // Check if entity type exists
     const entityType = await prisma.entityTypes.findUnique({
       where: { id: entity_type_id }
@@ -122,15 +116,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if entity exists
+    const entity = await prisma.entity.findUnique({
+      where: { id: entity_id }
+    });
+
+    if (!entity) {
+      return NextResponse.json(
+        { message: 'Entity not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if template exists
+    const template = await prisma.roleTemplate.findUnique({
+      where: { id: template_id }
+    });
+
+    if (!template) {
+      return NextResponse.json(
+        { message: 'Role template not found' },
+        { status: 404 }
+      );
+    }
+
     // Create entity role
     const entityRole = await prisma.entityRoles.create({
       data: {
         name,
         description,
-        entity_type_id
+        entityType: {
+          connect: {
+            id: entity_type_id
+          }
+        },
+        entity: {
+          connect: {
+            id: entity_id
+          }
+        },
+        template: {
+          connect: {
+            id: template_id
+          }
+        }
       },
       include: {
         entityType: true,
+        entity: true,
+        template: true,
         entityRolePermissions: {
           include: {
             permission: true,
@@ -138,6 +172,23 @@ export async function POST(request: NextRequest) {
           },
         },
       }
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: user.id,
+        entity_type: 'entityRole',
+        action: 'create',
+        details: JSON.stringify({
+          id: entityRole.id,
+          name,
+          description,
+          entityTypeId: entity_type_id,
+          entityId: entity_id,
+          templateId: template_id
+        }),
+      },
     });
 
     return NextResponse.json(entityRole, { status: 201 });

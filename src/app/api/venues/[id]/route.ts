@@ -6,47 +6,42 @@ import { requirePermission } from '@/middleware/roleCheck';
 // GET /api/venues/[id] - Get a specific venue
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // First verify basic authentication
+    // Verify authentication
     const user = await verifyAuth(request);
     if (!user) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const id = parseInt(params.id);
-    if (isNaN(id)) {
-      return NextResponse.json({ message: 'Invalid venue ID' }, { status: 400 });
-    }
+    // Await params to get the ID
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
 
-    // Check if user has general permission to view venues
-    const authResult = await requirePermission('view', '/api/venues')(request);
-    if ('isAuthorized' in authResult === false) {
-      return NextResponse.json({ message: 'Permission denied' }, { status: 403 });
-    }
-
-    // Check if user has access to this specific venue through entity membership
-    const hasAccess = await hasVenueAccess(user.id, id);
-    if (!hasAccess) {
-      return NextResponse.json(
-        { message: 'You do not have permission to view this venue' },
-        { status: 403 }
-      );
-    }
-
-    // Get venue by ID with full details
+    // Get venue with related data
     const venue = await prisma.venue.findUnique({
       where: { id },
       include: {
         entity: {
-          select: {
-            id: true,
-            name: true,
-            entityType: {
+          include: {
+            entityType: true
+          }
+        },
+        bookings: {
+          include: {
+            creator: {
               select: {
                 id: true,
-                name: true
+                username: true,
+                email: true
+              }
+            },
+            approver: {
+              select: {
+                id: true,
+                username: true,
+                email: true
               }
             }
           }
@@ -55,7 +50,10 @@ export async function GET(
     });
 
     if (!venue) {
-      return NextResponse.json({ message: 'Venue not found' }, { status: 404 });
+      return NextResponse.json(
+        { message: 'Venue not found' },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(venue);

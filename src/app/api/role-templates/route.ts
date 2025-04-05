@@ -1,38 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requirePermission } from '@/middleware/roleCheck';
-import { isSystemAdmin } from '@/lib/auth';
+import { verifyAuth } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 // GET /api/role-templates - Get all role templates
 export async function GET(request: NextRequest) {
   try {
-    // Check if user has permission to view role templates
-    const authResult = await requirePermission('view', '/api/role-templates')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only system admins can view role templates
-    const isAdmin = await isSystemAdmin(authResult.user.id);
-    if (!isAdmin) {
-      return NextResponse.json(
-        { message: 'Only system administrators can view role templates' },
-        { status: 403 }
-      );
-    }
-
-    // Get all role templates
     const templates = await prisma.roleTemplate.findMany({
       include: {
-        entityRoles: true,
+        versions: {
+          orderBy: {
+            version_number: 'desc'
+          },
+          take: 1
+        },
+        entityRoles: true
       },
     });
 
-    return NextResponse.json(templates);
+    // Transform the data to match the expected format in the frontend
+    const transformedTemplates = templates.map(template => {
+      const latestVersion = template.versions[0];
+      return {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        permissions: latestVersion ? Object.entries(latestVersion.permissions as Record<string, boolean>)
+          .filter(([_, value]) => value)
+          .map(([permission]) => ({
+            permission: { id: permission, name: permission, action: permission },
+            resource: { id: 'default', name: 'default', path: '/' }
+          })) : []
+      };
+    });
+
+    return NextResponse.json(transformedTemplates);
   } catch (error) {
     console.error('Error fetching role templates:', error);
     return NextResponse.json(
-      { message: 'Failed to fetch role templates' },
+      { error: 'Failed to fetch role templates' },
       { status: 500 }
     );
   }
@@ -41,60 +52,97 @@ export async function GET(request: NextRequest) {
 // POST /api/role-templates - Create a new role template
 export async function POST(request: NextRequest) {
   try {
-    // Check if user has permission to manage role templates
-    const authResult = await requirePermission('manage', '/api/role-templates')(request);
-    if ('isAuthorized' in authResult === false) {
-      return authResult;
+    const user = await verifyAuth(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only system admins can create role templates
-    const isAdmin = await isSystemAdmin(authResult.user.id);
-    if (!isAdmin) {
-      return NextResponse.json(
-        { message: 'Only system administrators can create role templates' },
-        { status: 403 }
-      );
-    }
+    // Check if user has permission to create role templates
+    await requirePermission(user.id, 'create', 'role_templates');
 
-    // Get request body
-    const { name, description, permissions } = await request.json();
+    const body = await request.json();
+    const { name, description, permissions } = body;
 
-    // Validate input
     if (!name) {
       return NextResponse.json(
-        { message: 'Template name is required' },
+        { error: 'Name is required' },
         { status: 400 }
       );
     }
 
-    // Create template
+    // Create the template
     const template = await prisma.roleTemplate.create({
       data: {
         name,
         description,
-        permissions: JSON.stringify(permissions || []),
       },
       include: {
-        entityRoles: true,
-      },
+        versions: true
+      }
+    });
+
+    // Create the initial version with permissions
+    const permissionsObject = permissions.reduce((acc: Record<string, boolean>, p: any) => {
+      acc[p.permission_id] = true;
+      return acc;
+    }, {});
+
+    await prisma.roleTemplateVersion.create({
+      data: {
+        template_id: template.id,
+        version_number: 1,
+        changes: { initial: true },
+        permissions: permissionsObject,
+        created_by: user.id
+      }
     });
 
     // Log the action
     await prisma.auditLog.create({
       data: {
-        user_id: authResult.user.id,
-        entity_type: 'role_template',
-        entity_id: template.id,
-        action: 'create_template',
-        details: JSON.stringify({ name, permissions })
+        user_id: user.id,
+        entity_type: 'role_templates',
+        action: 'create',
+        details: JSON.stringify({
+          template_id: template.id,
+          name: template.name,
+          description: template.description,
+        }),
+      },
+    });
+
+    // Return the template with the latest version
+    const updatedTemplate = await prisma.roleTemplate.findUnique({
+      where: { id: template.id },
+      include: {
+        versions: {
+          orderBy: {
+            version_number: 'desc'
+          },
+          take: 1
+        }
       }
     });
 
-    return NextResponse.json(template, { status: 201 });
+    // Transform the data to match the expected format in the frontend
+    const transformedTemplate = {
+      id: updatedTemplate!.id,
+      name: updatedTemplate!.name,
+      description: updatedTemplate!.description,
+      permissions: updatedTemplate!.versions[0] ? 
+        Object.entries(updatedTemplate!.versions[0].permissions as Record<string, boolean>)
+          .filter(([_, value]) => value)
+          .map(([permission]) => ({
+            permission: { id: permission, name: permission, action: permission },
+            resource: { id: 'default', name: 'default', path: '/' }
+          })) : []
+    };
+
+    return NextResponse.json(transformedTemplate, { status: 201 });
   } catch (error) {
     console.error('Error creating role template:', error);
     return NextResponse.json(
-      { message: 'Failed to create role template' },
+      { error: 'Failed to create role template' },
       { status: 500 }
     );
   }
