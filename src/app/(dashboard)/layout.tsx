@@ -20,6 +20,7 @@ import {
   Calendar,
   Layers,
   UserCog,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -105,6 +106,12 @@ export default function DashboardLayout({
       name: 'Roles',
       href: '/admin/roles',
       icon: UserCog,
+      show: isSystemAdmin,
+    },
+    {
+      name: 'Entity Approvers',
+      href: '/admin/entity-approvers',
+      icon: CheckCircle2,
       show: isSystemAdmin,
     },
     {

@@ -8,17 +8,15 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(params.id);
-    
     // Verify authentication
     const user = await verifyAuth(request);
     if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get booking by ID
     const booking = await prisma.venueBooking.findUnique({
-      where: { id },
+      where: { id: params.id },
       include: {
         venue: {
           select: {
@@ -40,24 +38,28 @@ export async function GET(
             username: true
           }
         },
-        approver: {
-          select: {
-            id: true,
-            username: true
+        approvals: {
+          include: {
+            approver: {
+              select: {
+                id: true,
+                username: true
+              }
+            }
           }
         }
       }
     });
 
     if (!booking) {
-      return NextResponse.json({ message: 'Booking not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
 
     return NextResponse.json(booking);
   } catch (error) {
     console.error('Error fetching venue booking:', error);
     return NextResponse.json(
-      { message: 'Failed to fetch venue booking' },
+      { error: 'Failed to fetch venue booking' },
       { status: 500 }
     );
   }
@@ -69,17 +71,15 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(params.id);
-    
     // Verify authentication
     const user = await verifyAuth(request);
     if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get booking to check ownership
     const existingBooking = await prisma.venueBooking.findUnique({
-      where: { id },
+      where: { id: params.id },
       select: { 
         entity_id: true,
         created_by: true,
@@ -89,7 +89,7 @@ export async function PUT(
     });
 
     if (!existingBooking) {
-      return NextResponse.json({ message: 'Booking not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
 
     // Check if user is the creator or an admin of the entity
@@ -102,7 +102,7 @@ export async function PUT(
     
     if (!isCreator && !isEntityAdmin) {
       return NextResponse.json(
-        { message: 'You do not have permission to update this booking' },
+        { error: 'You do not have permission to update this booking' },
         { status: 403 }
       );
     }
@@ -113,7 +113,7 @@ export async function PUT(
     // Validate input
     if (!title || !start_time || !end_time) {
       return NextResponse.json(
-        { message: 'Missing required fields' },
+        { error: 'Missing required fields' },
         { status: 400 }
       );
     }
@@ -127,7 +127,7 @@ export async function PUT(
         const conflictingBookings = await prisma.venueBooking.findMany({
           where: {
             venue_id: existingBooking.venue_id,
-            id: { not: id },
+            id: { not: params.id },
             status: { in: ['pending', 'approved'] },
             OR: [
               {
@@ -154,7 +154,7 @@ export async function PUT(
 
         if (conflictingBookings.length > 0) {
           return NextResponse.json(
-            { message: 'Venue is already booked during this time' },
+            { error: 'Venue is already booked during this time' },
             { status: 409 }
           );
         }
@@ -172,16 +172,11 @@ export async function PUT(
     // Only admins can change status
     if (status && isEntityAdmin) {
       updateData.status = status;
-      
-      // If approving, set approver
-      if (status === 'approved' && existingBooking.status !== 'approved') {
-        updateData.approved_by = user.id;
-      }
     }
 
     // Update booking
     const booking = await prisma.venueBooking.update({
-      where: { id },
+      where: { id: params.id },
       data: updateData,
       include: {
         venue: {
@@ -202,20 +197,41 @@ export async function PUT(
             username: true
           }
         },
-        approver: {
-          select: {
-            id: true,
-            username: true
+        approvals: {
+          include: {
+            approver: {
+              select: {
+                id: true,
+                username: true
+              }
+            }
           }
         }
       }
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: user.id,
+        entity_type: 'venue_bookings',
+        action: 'update',
+        details: JSON.stringify({
+          booking_id: params.id,
+          title,
+          description,
+          start_time,
+          end_time,
+          status
+        }),
+      },
     });
 
     return NextResponse.json(booking);
   } catch (error) {
     console.error('Error updating venue booking:', error);
     return NextResponse.json(
-      { message: 'Failed to update venue booking' },
+      { error: 'Failed to update venue booking' },
       { status: 500 }
     );
   }
@@ -227,25 +243,24 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(params.id);
-    
     // Verify authentication
     const user = await verifyAuth(request);
     if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get booking to check ownership
     const existingBooking = await prisma.venueBooking.findUnique({
-      where: { id },
+      where: { id: params.id },
       select: { 
         entity_id: true,
-        created_by: true
+        created_by: true,
+        status: true
       }
     });
 
     if (!existingBooking) {
-      return NextResponse.json({ message: 'Booking not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
 
     // Check if user is the creator or an admin of the entity
@@ -258,21 +273,33 @@ export async function DELETE(
     
     if (!isCreator && !isEntityAdmin) {
       return NextResponse.json(
-        { message: 'You do not have permission to delete this booking' },
+        { error: 'You do not have permission to delete this booking' },
         { status: 403 }
       );
     }
 
     // Delete booking
     await prisma.venueBooking.delete({
-      where: { id }
+      where: { id: params.id }
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: user.id,
+        entity_type: 'venue_bookings',
+        action: 'delete',
+        details: JSON.stringify({
+          booking_id: params.id
+        }),
+      },
     });
 
     return NextResponse.json({ message: 'Booking deleted successfully' });
   } catch (error) {
     console.error('Error deleting venue booking:', error);
     return NextResponse.json(
-      { message: 'Failed to delete venue booking' },
+      { error: 'Failed to delete venue booking' },
       { status: 500 }
     );
   }

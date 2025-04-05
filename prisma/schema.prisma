@@ -25,8 +25,10 @@ model users {
   createdPermissions permissions[] @relation("PermissionCreator")
   updatedPermissions permissions[] @relation("PermissionUpdater")
   reports          report[] @relation("ReporterReports")
-  approvedBookings VenueBooking[] @relation("BookingApprover")
   createdBookings  VenueBooking[] @relation("BookingCreator")
+  bookingApprovals VenueBookingApproval[] @relation("BookingApprover")
+  entityApprovers  EntityApprover[] @relation("EntityApprover")
+  createdApprovers EntityApprover[] @relation("ApproverCreator")
   apiUsage         apiUsage[] @relation("UserApiUsage")
   approvals        approval[] @relation("ApproverApprovals")
 }
@@ -97,6 +99,7 @@ model entity {
   workflowRequests workflowRequest[]
   VenueBookings   VenueBooking[]
   venues          Venue[]
+  approvers       EntityApprover[]
 }
 
 model roleTemplate {
@@ -333,16 +336,47 @@ model VenueBooking {
   status          String   @default("pending")
   venue_id        String
   entity_id       String
-  approved_by     String?
   created_by      String
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
-  approver        users?   @relation("BookingApprover", fields: [approved_by], references: [id])
   creator         users    @relation("BookingCreator", fields: [created_by], references: [id])
   entity          entity   @relation(fields: [entity_id], references: [id])
   venue           Venue    @relation(fields: [venue_id], references: [id])
+  approvals       VenueBookingApproval[]
 
   @@index([venue_id])
   @@index([entity_id])
   @@index([status])
+}
+
+model VenueBookingApproval {
+  id              String   @id @default(uuid())
+  booking_id      String
+  approver_id     String
+  status          String   @default("pending")
+  comments        String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  booking         VenueBooking @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+  approver        users    @relation("BookingApprover", fields: [approver_id], references: [id])
+
+  @@index([booking_id])
+  @@index([approver_id])
+  @@index([status])
+}
+
+model EntityApprover {
+  id              String   @id @default(uuid())
+  entity_id       String
+  approver_id     String
+  created_by      String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  entity          entity   @relation(fields: [entity_id], references: [id])
+  approver        users    @relation("EntityApprover", fields: [approver_id], references: [id])
+  creator         users    @relation("ApproverCreator", fields: [created_by], references: [id])
+
+  @@unique([entity_id, approver_id])
+  @@index([entity_id])
+  @@index([approver_id])
 }

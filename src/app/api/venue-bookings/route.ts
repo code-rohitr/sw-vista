@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     // Verify authentication
     const user = await verifyAuth(request);
     if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get query parameters
@@ -16,20 +16,25 @@ export async function GET(request: NextRequest) {
     const venueId = url.searchParams.get('venueId');
     const entityId = url.searchParams.get('entityId');
     const status = url.searchParams.get('status');
+    const userId = url.searchParams.get('userId');
 
     // Build query
     const query: any = {};
     
     if (venueId) {
-      query.venue_id = parseInt(venueId);
+      query.venue_id = venueId;
     }
     
     if (entityId) {
-      query.entity_id = parseInt(entityId);
+      query.entity_id = entityId;
     }
     
     if (status) {
       query.status = status;
+    }
+
+    if (userId) {
+      query.created_by = userId;
     }
 
     // Get all venue bookings
@@ -56,10 +61,14 @@ export async function GET(request: NextRequest) {
             username: true
           }
         },
-        approver: {
-          select: {
-            id: true,
-            username: true
+        approvals: {
+          include: {
+            approver: {
+              select: {
+                id: true,
+                username: true
+              }
+            }
           }
         }
       }
@@ -69,7 +78,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching venue bookings:', error);
     return NextResponse.json(
-      { message: 'Failed to fetch venue bookings' },
+      { error: 'Failed to fetch venue bookings' },
       { status: 500 }
     );
   }
@@ -81,7 +90,7 @@ export async function POST(request: NextRequest) {
     // Verify authentication
     const user = await verifyAuth(request);
     if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get request body
@@ -90,7 +99,7 @@ export async function POST(request: NextRequest) {
     // Validate input
     if (!venue_id || !entity_id || !title || !start_time || !end_time) {
       return NextResponse.json(
-        { message: 'Missing required fields' },
+        { error: 'Missing required fields' },
         { status: 400 }
       );
     }
@@ -102,7 +111,7 @@ export async function POST(request: NextRequest) {
     
     if (!isMember) {
       return NextResponse.json(
-        { message: 'You are not a member of this entity' },
+        { error: 'You are not a member of this entity' },
         { status: 403 }
       );
     }
@@ -114,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     if (!venue) {
       return NextResponse.json(
-        { message: 'Venue not found' },
+        { error: 'Venue not found' },
         { status: 404 }
       );
     }
@@ -152,10 +161,16 @@ export async function POST(request: NextRequest) {
 
     if (conflictingBookings.length > 0) {
       return NextResponse.json(
-        { message: 'Venue is already booked during this time' },
+        { error: 'Venue is already booked during this time' },
         { status: 409 }
       );
     }
+
+    // Get entity approvers
+    const entityApprovers = await prisma.entityApprover.findMany({
+      where: { entity_id },
+      select: { approver_id: true }
+    });
 
     // Create booking
     const booking = await prisma.venueBooking.create({
@@ -191,11 +206,45 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // Create approval records for each approver
+    if (entityApprovers.length > 0) {
+      await prisma.venueBookingApproval.createMany({
+        data: entityApprovers.map(approver => ({
+          booking_id: booking.id,
+          approver_id: approver.approver_id,
+          status: 'pending'
+        }))
+      });
+    } else {
+      // If no approvers, auto-approve the booking
+      await prisma.venueBooking.update({
+        where: { id: booking.id },
+        data: { status: 'approved' }
+      });
+    }
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: user.id,
+        entity_type: 'venue_bookings',
+        action: 'create',
+        details: JSON.stringify({
+          booking_id: booking.id,
+          venue_id,
+          entity_id,
+          title,
+          start_time,
+          end_time
+        }),
+      },
+    });
+
     return NextResponse.json(booking, { status: 201 });
   } catch (error) {
     console.error('Error creating venue booking:', error);
     return NextResponse.json(
-      { message: 'Failed to create venue booking' },
+      { error: 'Failed to create venue booking' },
       { status: 500 }
     );
   }
