@@ -5,34 +5,50 @@ import { hasEntityAccess } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { verifyAuth } from '@/lib/auth';
 
-// GET /api/entities/[id] - Get a specific entity
+// GET /api/entities/[id] - Get a single entity
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    // Check if user has permission to view entities
+    const authResult = await requirePermission('view', '/api/entities')(request);
+    if ('isAuthorized' in authResult === false) {
+      return authResult;
     }
 
-    // Await params to get the ID
-    const resolvedParams = await params;
-    const { id } = resolvedParams;
+    // Check if user has access to this entity
+    const hasAccess = await hasEntityAccess(authResult.user.id, params.id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { message: 'You do not have permission to view this entity' },
+        { status: 403 }
+      );
+    }
 
-    // Get entity with its type, parent, and children
+    // Fetch the entity with its details
     const entity = await prisma.entity.findUnique({
-      where: { id },
+      where: { id: params.id },
       include: {
-        entityType: true,
-        parent: true,
+        entityType: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        parent: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         children: {
-          include: {
-            entityType: true
-          }
-        }
-      }
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
 
     if (!entity) {
@@ -64,16 +80,25 @@ export async function PUT(
       return authResult;
     }
 
-    const { id } = params;
-    const data = await request.json();
+    // Check if user has access to this entity
+    const hasAccess = await hasEntityAccess(authResult.user.id, params.id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { message: 'You do not have permission to update this entity' },
+        { status: 403 }
+      );
+    }
 
-    // Update entity
+    const body = await request.json();
+    const { name, description, parent_id } = body;
+
+    // Update the entity
     const updatedEntity = await prisma.entity.update({
-      where: { id },
+      where: { id: params.id },
       data: {
-        name: data.name,
-        entityType_id: data.entityTypeId,
-        parent_id: data.parentId,
+        name,
+        description,
+        parent_id,
       },
       include: {
         entityType: {
@@ -88,6 +113,29 @@ export async function PUT(
             name: true,
           },
         },
+        children: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: authResult.user.id,
+        entity_type: 'entity',
+        action: 'update',
+        details: JSON.stringify({
+          entityId: params.id,
+          changes: {
+            name,
+            description,
+            parent_id,
+          },
+        }),
       },
     });
 
@@ -95,7 +143,7 @@ export async function PUT(
   } catch (error) {
     console.error('Error updating entity:', error);
     return NextResponse.json(
-      { error: 'Failed to update entity' },
+      { message: 'Failed to update entity' },
       { status: 500 }
     );
   }
@@ -113,18 +161,37 @@ export async function DELETE(
       return authResult;
     }
 
-    const { id } = params;
+    // Check if user has access to this entity
+    const hasAccess = await hasEntityAccess(authResult.user.id, params.id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { message: 'You do not have permission to delete this entity' },
+        { status: 403 }
+      );
+    }
 
-    // Delete entity
+    // Delete the entity
     await prisma.entity.delete({
-      where: { id },
+      where: { id: params.id },
     });
 
-    return NextResponse.json({ success: true });
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        user_id: authResult.user.id,
+        entity_type: 'entity',
+        action: 'delete',
+        details: JSON.stringify({
+          entityId: params.id,
+        }),
+      },
+    });
+
+    return NextResponse.json({ message: 'Entity deleted successfully' });
   } catch (error) {
     console.error('Error deleting entity:', error);
     return NextResponse.json(
-      { error: 'Failed to delete entity' },
+      { message: 'Failed to delete entity' },
       { status: 500 }
     );
   }

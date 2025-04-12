@@ -8,15 +8,16 @@ import { UserNav } from '@/components/user-nav';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { 
-  LayoutDashboard, 
-  Users, 
-  Settings, 
-  Building2,
-  User,
   Home,
-  LogOut
+  User,
+  LogOut,
+  Settings,
+  Users,
+  Shield,
+  LayoutDashboard
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { EntityDropdown } from '@/components/EntityDropdown';
 
 export default function DashboardLayout({
   children,
@@ -73,26 +74,27 @@ export default function DashboardLayout({
       href: '/dashboard/profile',
       icon: User,
     },
-    ...(user?.isSystemAdmin ? [
-      {
-        title: 'Users',
-        href: '/dashboard/users',
-        icon: Users,
-        permission: 'users.view',
-      },
-      {
-        title: 'Entities',
-        href: '/dashboard/entities',
-        icon: Building2,
-        permission: 'entities.view',
-      },
-      {
-        title: 'Settings',
-        href: '/dashboard/settings',
-        icon: Settings,
-        permission: 'settings.view',
-      },
-    ] : []),
+  ];
+
+  const adminNavItems = [
+    {
+      title: 'Users',
+      href: '/dashboard/admin/users',
+      icon: Users,
+      permission: 'manage_users',
+    },
+    {
+      title: 'Permissions',
+      href: '/dashboard/admin/permissions',
+      icon: Shield,
+      permission: 'manage_permissions',
+    },
+    {
+      title: 'Settings',
+      href: '/dashboard/admin/settings',
+      icon: Settings,
+      permission: 'manage_settings',
+    },
   ];
 
   return (
@@ -102,6 +104,8 @@ export default function DashboardLayout({
           <div className="flex items-center space-x-4 md:space-x-6">
             <span className="font-bold text-xl">SW-Vista</span>
             <DashboardNav items={navItems} />
+            <EntityDropdown />
+            {user?.isSystemAdmin && <DashboardNav items={adminNavItems} />}
           </div>
           <div className="ml-auto flex items-center space-x-4">
             <Button 
