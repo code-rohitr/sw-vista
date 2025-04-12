@@ -49,16 +49,6 @@ export async function requirePermission(
       }
     }
 
-    // Check if the user is a system admin (they have all permissions)
-    const user = await prisma.users.findUnique({
-      where: { id: userId },
-      select: { is_system_admin: true },
-    });
-
-    if (user?.is_system_admin) {
-      return true;
-    }
-
     return false;
   } catch (error) {
     console.error('Error checking permissions:', error);
@@ -85,21 +75,7 @@ export async function hasEntityAccess(
       },
     });
 
-    if (membership) {
-      return true;
-    }
-
-    // Check if the user is a system admin
-    const user = await prisma.users.findUnique({
-      where: { id: userId },
-      select: { is_system_admin: true },
-    });
-
-    if (user?.is_system_admin) {
-      return true;
-    }
-
-    return false;
+    return !!membership;
   } catch (error) {
     console.error('Error checking entity access:', error);
     return false;

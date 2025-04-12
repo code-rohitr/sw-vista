@@ -1,103 +1,38 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import { verifyToken } from './lib/jwt'
+import { withAuth } from "next-auth/middleware";
+import { NextResponse } from "next/server";
 
-// Define public routes that don't require authentication
-const publicRoutes = [
-  '/login',
-  '/api/auth/login',
-  '/api/auth/register',
-  '/',
-  '/favicon.ico',
-  '/_next',
-  '/static',
-]
+export default withAuth(
+  function middleware(req) {
+    const token = req.nextauth.token;
+    const isAuth = !!token;
+    const isAuthPage = req.nextUrl.pathname.startsWith("/login");
 
-// Define API routes that should bypass the middleware
-const bypassRoutes = [
-  '/api/auth/login',
-  '/api/auth/register',
-]
-
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
-
-  // Check if the path is public
-  const isPublicPath = publicRoutes.some(route => 
-    pathname.startsWith(route)
-  )
-
-  // Check if the path should bypass middleware
-  const shouldBypass = bypassRoutes.some(route => 
-    pathname.startsWith(route)
-  )
-
-  if (shouldBypass) {
-    return NextResponse.next()
-  }
-
-  // Get token from cookie only
-  const token = request.cookies.get('auth_token')?.value
-
-  // If it's a public path, allow access
-  if (isPublicPath) {
-    return NextResponse.next()
-  }
-
-  // If no token is present, redirect to login or return unauthorized
-  if (!token) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { message: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  try {
-    // Verify token
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json(
-          { message: 'Invalid token' },
-          { status: 401 }
-        )
+    if (isAuthPage) {
+      if (isAuth) {
+        return NextResponse.redirect(new URL("/dashboard", req.url));
       }
-      return NextResponse.redirect(new URL('/login', request.url))
+      return null;
     }
 
-    // Token is valid, allow request
-    const response = NextResponse.next()
-    
-    // Add user info to headers for downstream use
-    response.headers.set('X-User-ID', decoded.id)
-    response.headers.set('X-User-Role', decoded.isSystemAdmin ? 'admin' : 'user')
-    
-    return response
-  } catch (error) {
-    console.error('Auth middleware error:', error)
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { message: 'Authentication error' },
-        { status: 401 }
-      )
+    if (!isAuth) {
+      let from = req.nextUrl.pathname;
+      if (req.nextUrl.search) {
+        from += req.nextUrl.search;
+      }
+
+      return NextResponse.redirect(
+        new URL(`/login?from=${encodeURIComponent(from)}`, req.url)
+      );
     }
-    return NextResponse.redirect(new URL('/login', request.url))
+  },
+  {
+    callbacks: {
+      authorized: ({ token }) => !!token,
+    },
   }
-}
+);
 
-// Configure which routes should be handled by this middleware
+// Protect all routes except public ones
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except:
-     * 1. /api/auth/* (authentication endpoints)
-     * 2. /_next/* (Next.js internals)
-     * 3. /static/* (static files)
-     * 4. /favicon.ico, /sitemap.xml (public files)
-     */
-    '/((?!api/auth|_next/static|_next/image|static|favicon.ico|sitemap.xml).*)',
-  ],
-} 
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|login).*)"],
+}; 

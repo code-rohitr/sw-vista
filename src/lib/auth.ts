@@ -309,15 +309,16 @@ export async function getAllUserPermissions(userId: string) {
 export async function verifyAuth(request?: NextRequest) {
   try {
     let token: string | undefined;
-    
+
     if (request) {
-      // Get token from Authorization header or cookie
+      // Get token from Authorization header
       const authHeader = request.headers.get('Authorization');
-      const cookieToken = request.cookies.get('auth_token')?.value;
-      token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : cookieToken;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
     } else {
       // If no request is provided, try to get token from cookies
-      const cookies = require('next/headers').cookies;
+      const cookies = (await import('next/headers')).cookies;
       token = cookies().get('auth_token')?.value;
     }
 
@@ -372,7 +373,7 @@ export async function verifyAuth(request?: NextRequest) {
       }))
     };
   } catch (error) {
-    console.error('Auth verification error:', error);
+    console.error('Error verifying auth:', error);
     return null;
   }
 }
