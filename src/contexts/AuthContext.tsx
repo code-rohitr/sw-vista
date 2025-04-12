@@ -58,8 +58,13 @@ interface EntityMembership {
 interface User {
   id: string;
   username: string;
+  email: string;
   isSystemAdmin: boolean;
-  entityMemberships: EntityMembership[];
+  entityMemberships: {
+    entityId: string;
+    roleName: string;
+    permissions: string[];
+  }[];
 }
 
 interface AuthContextType {
@@ -75,7 +80,7 @@ interface AuthContextType {
   hasEntityAccess: (entityId: string) => boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -165,17 +170,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return false;
     if (user.isSystemAdmin) return true;
 
-    if (entityId) {
-      const membership = user.entityMemberships.find(m => m.entityId === entityId);
-      return membership?.permissions.includes(permission) ?? false;
+    // Check if entityMemberships exists and is an array
+    if (!user.entityMemberships || !Array.isArray(user.entityMemberships)) {
+      return false;
     }
 
-    return user.entityMemberships.some(m => m.permissions.includes(permission));
+    if (entityId) {
+      const membership = user.entityMemberships.find(m => m.entityId === entityId);
+      return membership?.permissions?.includes(permission) ?? false;
+    }
+
+    return user.entityMemberships.some(m => m.permissions?.includes(permission));
   };
 
   const hasEntityRole = (roleName: string, entityId: string): boolean => {
     if (!user) return false;
     if (user.isSystemAdmin) return true;
+
+    // Check if entityMemberships exists and is an array
+    if (!user.entityMemberships || !Array.isArray(user.entityMemberships)) {
+      return false;
+    }
 
     return user.entityMemberships.some(
       m => m.entityId === entityId && m.roleName === roleName
@@ -185,6 +200,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasEntityAccess = (entityId: string): boolean => {
     if (!user) return false;
     if (user.isSystemAdmin) return true;
+
+    // Check if entityMemberships exists and is an array
+    if (!user.entityMemberships || !Array.isArray(user.entityMemberships)) {
+      return false;
+    }
 
     return user.entityMemberships.some(m => m.entityId === entityId);
   };
