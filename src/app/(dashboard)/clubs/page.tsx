@@ -37,6 +37,11 @@ export default async function ClubsPage() {
     redirect('/login')
   }
 
+  // Allow both SWO and admin to access this page
+  if (session.user?.role !== 'SWO' && session.user?.role !== 'admin') {
+    redirect('/dashboard')
+  }
+
   const clubs = await getClubs()
 
   return (

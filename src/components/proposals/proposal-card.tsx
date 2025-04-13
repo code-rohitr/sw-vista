@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 import { format } from "date-fns"
+import { useSession } from "next-auth/react"
 
 interface Proposal {
   id: number
@@ -15,6 +16,7 @@ interface Proposal {
   requested_date: Date
   status: string
   created_at: Date
+  comments?: string | null
   proposer: {
     username: string
     email: string
@@ -29,6 +31,9 @@ export function ProposalCard({ proposal }: ProposalCardProps) {
   const [comment, setComment] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
+  const { data: session } = useSession()
+
+  const isAdmin = session?.user?.role === 'SWO' || session?.user?.role === 'admin'
 
   const handleApprove = async () => {
     try {
@@ -129,32 +134,43 @@ export function ProposalCard({ proposal }: ProposalCardProps) {
             <p className="text-sm text-gray-600">{proposal.status}</p>
           </div>
 
-          <div>
-            <h3 className="font-medium">Comments</h3>
-            <Textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Add your comments here..."
-              className="mt-2"
-            />
-          </div>
+          {proposal.comments && (
+            <div>
+              <h3 className="font-medium">Comments from Student Welfare Office</h3>
+              <p className="text-sm text-gray-600">{proposal.comments}</p>
+            </div>
+          )}
 
-          <div className="flex gap-4">
-            <Button
-              onClick={handleApprove}
-              disabled={isSubmitting || !comment || proposal.status === "Approved"}
-              variant="default"
-            >
-              Approve
-            </Button>
-            <Button
-              onClick={handleReject}
-              disabled={isSubmitting || !comment || proposal.status === "Rejected"}
-              variant="destructive"
-            >
-              Reject
-            </Button>
-          </div>
+          {isAdmin && (
+            <>
+              <div>
+                <h3 className="font-medium">Add Comments</h3>
+                <Textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Add your comments here..."
+                  className="mt-2"
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <Button
+                  onClick={handleApprove}
+                  disabled={isSubmitting || !comment || proposal.status === "Approved"}
+                  variant="default"
+                >
+                  Approve
+                </Button>
+                <Button
+                  onClick={handleReject}
+                  disabled={isSubmitting || !comment || proposal.status === "Rejected"}
+                  variant="destructive"
+                >
+                  Reject
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>

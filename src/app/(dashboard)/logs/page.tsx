@@ -33,8 +33,8 @@ export default async function LogsPage() {
     redirect('/login')
   }
 
-  // Only allow admin to access this page
-  if (session.user?.role !== 'admin') {
+  // Allow both SWO and admin to access this page
+  if (session.user?.role !== 'SWO' && session.user?.role !== 'admin') {
     redirect('/dashboard')
   }
 
