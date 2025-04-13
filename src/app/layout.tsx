@@ -1,26 +1,28 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import Providers from './providers'
+import { Providers } from '@/components/providers'
+import { Toaster } from "@/components/ui/toaster"
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'SW-Vista',
-  description: 'A modern venue booking and management system',
+  title: 'SW VISTA',
+  description: 'Student Welfare Venue Information and Scheduling Tool for Academics',
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={inter.className}>
         <Providers>
           {children}
         </Providers>
+        <Toaster />
       </body>
     </html>
   )

@@ -52,20 +52,20 @@ model Venue {
 }
 
 model VenueBooking {
-  id                Int       @id @default(autoincrement())
-  user_id          Int
-  venue_id         Int
-  event_name       String
-  event_description String?
-  event_date       DateTime
-  status           String
-  created_at       DateTime  @default(now())
-  
+  id          Int      @id @default(autoincrement())
+  event_name  String
+  event_date  DateTime
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
+  status      Int      @default(1) // 0: Rejected, 1: Submitted, 2: FA Approved, 3: SC Approved, 4: SWO Approved, 5: Security Approved
+  user        User     @relation(fields: [user_id], references: [id])
+  user_id     Int
+  venue       Venue    @relation(fields: [venue_id], references: [id])
+  venue_id    Int
+
   // Relations
-  user             User      @relation(fields: [user_id], references: [id])
-  venue            Venue     @relation(fields: [venue_id], references: [id])
-  event_history    EventHistory[]
-  reports          Report[]
+  reports Report[]
+  event_history EventHistory[]
 
   @@map("venue_bookings")
 }
