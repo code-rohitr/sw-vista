@@ -218,7 +218,7 @@ export function Sidebar() {
           <p className="text-sm text-gray-500">
             Student Welfare Venue Information and Scheduling Tool for Academics
           </p>
-          <h3 className="text-sm font-medium mt-4">Office of Student Welfare</h3>
+          <h3 className="text-sm font-medium mt-4">Logged in as <span className="font-bold text-blue-500 text-lg">{session.user?.name}</span></h3>
         </div>
 
         <div className="flex items-center justify-between mt-6 mb-8">

@@ -23,6 +23,8 @@ import { Venue, VenueBooking, VenueCatalogue } from "@prisma/client"
 import { useState } from "react"
 import { BookingForm } from "./booking-form"
 import { useQuery } from "@tanstack/react-query"
+import { Calendar, Clock, MapPin, Users } from "lucide-react"
+import Image from "next/image"
 
 interface VenueCardProps {
   venue: Venue & {
@@ -34,86 +36,119 @@ interface VenueCardProps {
 
 export function VenueCard({ venue }: VenueCardProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false)
+  const [imageError, setImageError] = useState(false)
 
-  // Fetch all venues to pass to the booking form
-  const { data: venues } = useQuery({
-    queryKey: ["venues"],
-    queryFn: async () => {
-      const response = await fetch("/api/venues")
-      if (!response.ok) throw new Error("Failed to fetch venues")
-      return response.json()
-    },
-  })
+  // Get status badge variant and text
+  const getStatusBadge = () => {
+    switch (venue.status) {
+      case "available":
+        return { variant: "success" as const, text: "Available Now" }
+      case "booked":
+        return { variant: "secondary" as const, text: "Currently Booked" }
+      case "maintenance":
+        return { variant: "destructive" as const, text: "Under Maintenance" }
+    }
+  }
+
+  const statusBadge = getStatusBadge()
+
+  // Function to validate image URL
+  const getImageUrl = () => {
+    if (imageError || !venue.image_url) {
+      return "/images/venue.jpg"
+    }
+    try {
+      const url = new URL(venue.image_url)
+      return url.toString()
+    } catch {
+      return "/images/venue.jpg"
+    }
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{venue.name}</CardTitle>
-        <CardDescription>{venue.location}</CardDescription>
+    <Card className="flex flex-col h-full group">
+      <div className="relative h-48 w-full overflow-hidden rounded-t-lg">
+        <div className="absolute inset-0 bg-black/60 group-hover:bg-black/40 transition-colors z-10" />
+        <Image
+          src={getImageUrl()}
+          alt={venue.name}
+          fill
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          onError={() => setImageError(true)}
+          priority={false}
+        />
+        <div className="absolute inset-0 z-20 p-4 flex flex-col justify-between">
+          <Badge 
+            className="self-end" 
+            variant={statusBadge.variant}
+          >
+            {venue.location}
+          </Badge>
+          <h3 className="text-lg font-semibold text-white">{venue.name}</h3>
+        </div>
+      </div>
+      <CardHeader className="pb-2">
+        <CardDescription className="flex items-center gap-1">
+          <MapPin className="h-4 w-4" />
+          {venue.location}
+        </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-grow">
         <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-medium">Status</h3>
-            <Badge
-              variant={
-                venue.status === "available"
-                  ? "default"
-                  : venue.status === "booked"
-                  ? "secondary"
-                  : "destructive"
-              }
-            >
-              {venue.status === "available"
-                ? "Available"
-                : venue.status === "booked"
-                ? "Booked"
-                : "Under Maintenance"}
-            </Badge>
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <span>Capacity: {venue.capacity} people</span>
           </div>
+          
           {venue.status === "booked" && venue.nextBooking && (
-            <div>
-              <h3 className="text-sm font-medium">Next Available</h3>
-              <p>
-                {format(new Date(venue.nextBooking.end_time), "PPP p")}
-              </p>
-            </div>
-          )}
-          <div>
-            <h3 className="text-sm font-medium">Capacity</h3>
-            <p>{venue.capacity} people</p>
-          </div>
-          {venue.amenities && venue.amenities.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium">Amenities</h3>
-              <div className="flex flex-wrap gap-2">
-                {venue.amenities.map((amenity) => (
-                  <Badge key={amenity} variant="outline">
-                    {amenity}
-                  </Badge>
-                ))}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                <span>Current Event: {venue.nextBooking.event_name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                <div className="text-sm text-muted-foreground">
+                  Until {format(new Date(venue.nextBooking.end_time), "h:mm a")}
+                </div>
               </div>
             </div>
           )}
+
           {venue.catalogue && venue.catalogue.length > 0 && (
             <div>
-              <h3 className="text-sm font-medium">Equipment</h3>
+              <h3 className="text-sm font-medium mb-2">Available Equipment</h3>
               <div className="flex flex-wrap gap-2">
                 {venue.catalogue.map((item) => (
                   <Badge key={item.id} variant="outline">
-                    {item.name} ({item.quantity})
+                    {item.name}
                   </Badge>
                 ))}
               </div>
             </div>
+          )}
+
+          {venue.description && (
+            <p className="text-sm text-muted-foreground">
+              {venue.description}
+            </p>
           )}
         </div>
       </CardContent>
       <CardFooter>
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
           <SheetTrigger asChild>
-            <Button className="w-full" disabled={venue.status !== "available"}>
-              Book Now
+            <Button 
+              className="w-full border-2 cursor-pointer" 
+              disabled={venue.status === "maintenance"}
+              variant={venue.status === "available" ? "secondary" : "secondary"}
+            >
+              {venue.status === "available" 
+                ? "Book Now" 
+                : venue.status === "maintenance"
+                ? "Unavailable"
+                : "Check Availability"}
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[400px] sm:w-[540px]">

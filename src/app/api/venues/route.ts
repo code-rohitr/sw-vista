@@ -71,4 +71,48 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
+}
+
+export async function POST(request: Request) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Only SWO can add venues
+    if (session.user?.role !== 'SWO') {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const { name, location, capacity, description, image_url } = body
+
+    // Validate required fields
+    if (!name || !location || !capacity) {
+      return NextResponse.json(
+        { error: "Name, location, and capacity are required" },
+        { status: 400 }
+      )
+    }
+
+    // Create venue
+    const venue = await prisma.venue.create({
+      data: {
+        name,
+        location,
+        capacity: parseInt(capacity),
+        description,
+        image_url,
+      },
+    })
+
+    return NextResponse.json(venue)
+  } catch (error) {
+    console.error("Error creating venue:", error)
+    return NextResponse.json(
+      { error: "Failed to create venue" },
+      { status: 500 }
+    )
+  }
 } 

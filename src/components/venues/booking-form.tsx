@@ -236,17 +236,16 @@ export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Event Type</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select  onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select event type" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="meeting">Meeting</SelectItem>
-                  <SelectItem value="workshop">Workshop</SelectItem>
-                  <SelectItem value="seminar">Seminar</SelectItem>
-                  <SelectItem value="social">Social Event</SelectItem>
+                  <SelectItem value="meeting">GBM</SelectItem>
+                  <SelectItem value="workshop">Practice</SelectItem>
+                  <SelectItem value="seminar">Event</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

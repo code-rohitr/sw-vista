@@ -61,7 +61,7 @@ export function ClubProposals() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">Event Proposals</h2>
-        <Button onClick={() => setIsNewProposalOpen(true)}>
+        <Button className="border-2 hover:bg-gray-200" onClick={() => setIsNewProposalOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           New Proposal
         </Button>

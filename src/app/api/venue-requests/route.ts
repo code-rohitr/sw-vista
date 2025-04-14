@@ -96,7 +96,13 @@ export async function GET(request: Request) {
 
     // Transform the data to match the frontend requirements
     const transformedBookings = bookings.map(booking => {
-      const clubName = booking.user.club_memberships[0]?.club.name || 'N/A'
+      // Get the club name from the user's club memberships
+      // First try to find where user is President, if not found use the first club membership
+      const clubMembership = booking.user.club_memberships.find(
+        membership => membership.role === 'President'
+      ) || booking.user.club_memberships[0];
+      
+      const clubName = clubMembership?.club.name || booking.user.username;
       
       return {
         id: booking.id.toString(),

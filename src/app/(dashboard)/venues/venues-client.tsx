@@ -1,8 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
 import { VenueCard } from "@/components/venues/venue-card"
 import { Input } from "@/components/ui/input"
+import { AddVenueForm } from "@/components/venues/add-venue-form"
 import {
   Select,
   SelectContent,
@@ -18,6 +20,7 @@ export default function VenuesClient() {
   const [location, setLocation] = useState("all")
   const [status, setStatus] = useState("all")
   const [loading, setLoading] = useState(true)
+  const { data: session } = useSession()
 
   useEffect(() => {
     fetchVenues()
@@ -53,7 +56,7 @@ export default function VenuesClient() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Venues</h1>
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
           <Input
             type="search"
             placeholder="Search venues..."
@@ -85,6 +88,7 @@ export default function VenuesClient() {
               <SelectItem value="maintenance">Maintenance</SelectItem>
             </SelectContent>
           </Select>
+          {session?.user?.role === 'SWO' && <AddVenueForm />}
         </div>
       </div>
 

@@ -121,13 +121,13 @@ export function VenueRequestCard({
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Start Date
+                  Start Date & Time
                 </p>
-                <p>{new Date(request.startDate).toLocaleDateString()}</p>
+                <p>{format(new Date(request.startDate), "PPP p")}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">End Date</p>
-                <p>{new Date(request.endDate).toLocaleDateString()}</p>
+                <p className="text-sm font-medium text-muted-foreground">End Date & Time</p>
+                <p>{format(new Date(request.endDate), "PPP p")}</p>
               </div>
             </div>
             <div>
