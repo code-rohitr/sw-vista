@@ -11,7 +11,7 @@ export async function GET() {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    if (session.user?.role !== 'club') {
+    if (session.user?.role?.toUpperCase() !== 'CLUB') {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    if (session.user?.role !== 'club') {
+    if (session.user?.role?.toUpperCase() !== 'CLUB') {
       return new NextResponse("Forbidden", { status: 403 })
     }
 

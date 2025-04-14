@@ -29,13 +29,9 @@ async function main() {
   ]
 
   console.log('Creating user roles...')
-  const createdRoles = []
-  for (const role of roles) {
-    const createdRole = await prisma.userRole.create({
-      data: role
-    })
-    createdRoles.push(createdRole)
-  }
+  const createdRoles = await Promise.all(
+    roles.map(role => prisma.userRole.create({ data: role }))
+  )
 
   // Create users
   const defaultPassword = await bcrypt.hash('password123', 10)
@@ -100,27 +96,9 @@ async function main() {
   ]
 
   console.log('Creating users...')
-  const createdUsers = []
-  for (const user of users) {
-    const createdUser = await prisma.user.create({
-      data: user
-    })
-    createdUsers.push(createdUser)
-  }
-
-  // Create placeholder users for anonymous members and feedback
-  const placeholderUsers = []
-  for (let i = 1; i <= 30; i++) {
-    const placeholderUser = await prisma.user.create({
-      data: {
-        username: `anonymous_user_${i}`,
-        email: `anonymous${i}@placeholder.edu`,
-        password_hash: defaultPassword,
-        role: 'ANONYMOUS'
-      }
-    })
-    placeholderUsers.push(placeholderUser)
-  }
+  const createdUsers = await Promise.all(
+    users.map(user => prisma.user.create({ data: user }))
+  )
 
   // Create venues
   const venues = [
@@ -197,13 +175,9 @@ async function main() {
   ]
 
   console.log('Creating venues...')
-  const createdVenues = []
-  for (const venue of venues) {
-    const createdVenue = await prisma.venue.create({
-      data: venue
-    })
-    createdVenues.push(createdVenue)
-  }
+  const createdVenues = await Promise.all(
+    venues.map(venue => prisma.venue.create({ data: venue }))
+  )
 
   // Create clubs
   const clubs = [
@@ -230,148 +204,78 @@ async function main() {
   ]
 
   console.log('Creating clubs...')
-  const createdClubs = []
-  for (const club of clubs) {
-    const createdClub = await prisma.club.create({
-      data: club
-    })
-    createdClubs.push(createdClub)
-  }
+  const createdClubs = await Promise.all(
+    clubs.map(club => prisma.club.create({ data: club }))
+  )
 
   // Create club members
   const clubMembers = [
     // CS Club
     {
       club_id: createdClubs[0].id,
-      user_id: createdUsers[4].id, // cs_president
+      user_id: createdUsers[4].id,
       role: 'President'
     },
     // Debate Club
     {
       club_id: createdClubs[1].id,
-      user_id: createdUsers[5].id, // debate_president
+      user_id: createdUsers[5].id,
       role: 'President'
     },
     // Music Club
     {
       club_id: createdClubs[2].id,
-      user_id: createdUsers[6].id, // music_president
+      user_id: createdUsers[6].id,
       role: 'President'
     },
     // Sports Club
     {
       club_id: createdClubs[3].id,
-      user_id: createdUsers[7].id, // sports_president
+      user_id: createdUsers[7].id,
       role: 'President'
     },
     // Art Club
     {
       club_id: createdClubs[4].id,
-      user_id: createdUsers[8].id, // art_president
+      user_id: createdUsers[8].id,
       role: 'President'
     }
   ]
 
-  // Add regular members (5 for each club)
-  let placeholderIndex = 0
-  for (let i = 0; i < 5; i++) {
-    for (let clubIndex = 0; clubIndex < createdClubs.length; clubIndex++) {
-      clubMembers.push({
-        club_id: createdClubs[clubIndex].id,
-        user_id: placeholderUsers[placeholderIndex++].id,
-        role: 'Member'
-      })
-    }
-  }
-
   console.log('Creating club members...')
-  for (const member of clubMembers) {
-    await prisma.clubMember.create({
-      data: member
-    })
-  }
+  await Promise.all(
+    clubMembers.map(member => prisma.clubMember.create({ data: member }))
+  )
 
-  // Create venue bookings
-  const venueBookings = await Promise.all([
-    prisma.venueBooking.create({
-      data: {
-        event_name: "Annual Tech Fest",
-        event_date: new Date("2024-05-15"),
-        status: 1, // Submitted
-        user: {
-          connect: { id: users[0].id }
-        },
-        venue: {
-          connect: { id: venues[0].id }
-        }
-      }
-    }),
-    prisma.venueBooking.create({
-      data: {
-        event_name: "Cultural Night",
-        event_date: new Date("2024-06-01"),
-        status: 2, // FA Approved
-        user: {
-          connect: { id: users[1].id }
-        },
-        venue: {
-          connect: { id: venues[1].id }
-        }
-      }
-    }),
-    prisma.venueBooking.create({
-      data: {
-        event_name: "Sports Day",
-        event_date: new Date("2024-07-10"),
-        status: 3, // SC Approved
-        user: {
-          connect: { id: users[2].id }
-        },
-        venue: {
-          connect: { id: venues[2].id }
-        }
-      }
-    }),
-    prisma.venueBooking.create({
-      data: {
-        event_name: "Alumni Meet",
-        event_date: new Date("2024-08-20"),
-        status: 4, // SWO Approved
-        user: {
-          connect: { id: users[3].id }
-        },
-        venue: {
-          connect: { id: venues[0].id }
-        }
-      }
-    }),
-    prisma.venueBooking.create({
-      data: {
-        event_name: "Graduation Ceremony",
-        event_date: new Date("2024-09-05"),
-        status: 5, // Security Approved (Final)
-        user: {
-          connect: { id: users[4].id }
-        },
-        venue: {
-          connect: { id: venues[1].id }
-        }
-      }
-    }),
-    prisma.venueBooking.create({
-      data: {
-        event_name: "Rejected Event",
-        event_date: new Date("2024-10-01"),
-        status: 0, // Rejected
-        user: {
-          connect: { id: users[5].id }
-        },
-        venue: {
-          connect: { id: venues[2].id }
-        }
-      }
-    })
-  ]);
+  // Create some venue bookings
+  const venueBookings = [
+    {
+      event_name: 'Tech Talk',
+      event_date: new Date('2024-05-01'),
+      user_id: createdUsers[4].id,
+      venue_id: createdVenues[0].id,
+      status: 1
+    },
+    {
+      event_name: 'Debate Competition',
+      event_date: new Date('2024-05-05'),
+      user_id: createdUsers[5].id,
+      venue_id: createdVenues[1].id,
+      status: 1
+    },
+    {
+      event_name: 'Music Festival',
+      event_date: new Date('2024-05-10'),
+      user_id: createdUsers[6].id,
+      venue_id: createdVenues[3].id,
+      status: 1
+    }
+  ]
+
+  console.log('Creating venue bookings...')
+  const createdBookings = await Promise.all(
+    venueBookings.map(booking => prisma.venueBooking.create({ data: booking }))
+  )
 
   // Create approvals
   const approvals = [
@@ -379,28 +283,28 @@ async function main() {
     {
       approver_id: createdUsers[1].id, // FA
       entity_type: 'booking',
-      entity_id: venueBookings[0].id,
+      entity_id: createdBookings[0].id,
       action: 'approved',
       remarks: 'Approved by Faculty Advisor'
     },
     {
       approver_id: createdUsers[2].id, // SC
       entity_type: 'booking',
-      entity_id: venueBookings[1].id,
+      entity_id: createdBookings[1].id,
       action: 'approved',
       remarks: 'Approved by Student Council'
     },
     {
       approver_id: createdUsers[0].id, // SWO
       entity_type: 'booking',
-      entity_id: venueBookings[2].id,
+      entity_id: createdBookings[2].id,
       action: 'approved',
       remarks: 'Approved by SWO'
     },
     {
       approver_id: createdUsers[3].id, // Security
       entity_type: 'booking',
-      entity_id: venueBookings[3].id,
+      entity_id: createdBookings[2].id,
       action: 'approved',
       remarks: 'Approved by Security'
     },
@@ -408,7 +312,7 @@ async function main() {
     {
       approver_id: createdUsers[1].id, // FA
       entity_type: 'booking',
-      entity_id: venueBookings[4].id,
+      entity_id: createdBookings[2].id,
       action: 'approved',
       remarks: 'Approved by Faculty Advisor'
     },
@@ -416,14 +320,14 @@ async function main() {
     {
       approver_id: createdUsers[1].id, // FA
       entity_type: 'booking',
-      entity_id: venueBookings[5].id,
+      entity_id: createdBookings[2].id,
       action: 'approved',
       remarks: 'Approved by Faculty Advisor'
     },
     {
       approver_id: createdUsers[2].id, // SC
       entity_type: 'booking',
-      entity_id: venueBookings[5].id,
+      entity_id: createdBookings[2].id,
       action: 'approved',
       remarks: 'Approved by Student Council'
     },
@@ -431,25 +335,23 @@ async function main() {
     {
       approver_id: createdUsers[1].id, // FA
       entity_type: 'booking',
-      entity_id: venueBookings[6].id,
+      entity_id: createdBookings[2].id,
       action: 'approved',
       remarks: 'Approved by Faculty Advisor'
     },
     {
       approver_id: createdUsers[2].id, // SC
       entity_type: 'booking',
-      entity_id: venueBookings[6].id,
+      entity_id: createdBookings[2].id,
       action: 'rejected',
       remarks: 'Event timing extends beyond allowed hours'
     }
   ]
 
   console.log('Creating approvals...')
-  for (const approval of approvals) {
-    await prisma.approval.create({
-      data: approval
-    })
-  }
+  await Promise.all(
+    approvals.map(approval => prisma.approval.create({ data: approval }))
+  )
 
   // Create proposals
   const proposals = [
@@ -480,40 +382,36 @@ async function main() {
   ]
 
   console.log('Creating proposals...')
-  for (const proposal of proposals) {
-    await prisma.proposal.create({
-      data: proposal
-    })
-  }
+  await Promise.all(
+    proposals.map(proposal => prisma.proposal.create({ data: proposal }))
+  )
 
   // Create event feedback
   const feedback = [
     {
-      event_id: venueBookings[0].id, // Annual Tech Fest
+      event_id: createdBookings[0].id, // Tech Talk
       user_id: createdUsers[4].id, // cs_president
       rating: 5,
       comments: 'Excellent workshop, very informative and well-organized'
     },
     {
-      event_id: venueBookings[1].id,
-      user_id: placeholderUsers[25].id,
+      event_id: createdBookings[1].id,
+      user_id: createdUsers[5].id,
       rating: 4,
       comments: 'Great content but venue was slightly cramped'
     },
     {
-      event_id: venueBookings[2].id,
-      user_id: placeholderUsers[26].id,
+      event_id: createdBookings[2].id,
+      user_id: createdUsers[6].id,
       rating: 5,
       comments: 'Loved the hands-on approach to learning'
     }
   ]
 
   console.log('Creating event feedback...')
-  for (const f of feedback) {
-    await prisma.eventFeedback.create({
-      data: f
-    })
-  }
+  await Promise.all(
+    feedback.map(f => prisma.eventFeedback.create({ data: f }))
+  )
 
   // Create reports
   const reports = [
@@ -521,99 +419,93 @@ async function main() {
       reporter_id: createdUsers[4].id, // cs_president
       report_type: 'Facility Issue',
       content: 'Projector in AB1 R5006 had connectivity issues during the workshop',
-      event_id: venueBookings[0].id,
+      event_id: createdBookings[0].id,
       status: 'Pending'
     },
     {
       reporter_id: createdUsers[6].id, // music_president
       report_type: 'Equipment Request',
       content: 'Need additional microphones for the upcoming music concert',
-      event_id: venueBookings[4].id,
+      event_id: createdBookings[2].id,
       status: 'Pending'
     },
     {
       reporter_id: createdUsers[7].id, // sports_president
       report_type: 'Security Concern',
       content: 'Need additional security personnel for the basketball tournament',
-      event_id: venueBookings[5].id,
+      event_id: createdBookings[2].id,
       status: 'Pending'
     }
   ]
 
   console.log('Creating reports...')
-  for (const report of reports) {
-    await prisma.report.create({
-      data: report
-    })
-  }
+  await Promise.all(
+    reports.map(report => prisma.report.create({ data: report }))
+  )
 
   // Create calendar notifications
   const notifications = [
     {
       user_id: createdUsers[4].id, // cs_president
-      event_id: venueBookings[0].id,
+      event_id: createdBookings[0].id,
       notification_type: 'reminder',
       sent_at: new Date('2025-04-19T14:00:00Z')
     },
     {
       user_id: createdUsers[1].id, // FA
-      event_id: venueBookings[1].id,
+      event_id: createdBookings[1].id,
       notification_type: 'approval_needed',
       sent_at: new Date('2025-04-05T09:15:00Z')
     },
     {
       user_id: createdUsers[2].id, // SC
-      event_id: venueBookings[2].id,
+      event_id: createdBookings[2].id,
       notification_type: 'approval_needed',
       sent_at: new Date('2025-04-02T14:30:00Z')
     },
     {
       user_id: createdUsers[0].id, // SWO
-      event_id: venueBookings[3].id,
+      event_id: createdBookings[2].id,
       notification_type: 'approval_needed',
       sent_at: new Date('2025-04-07T13:20:00Z')
     }
   ]
 
   console.log('Creating calendar notifications...')
-  for (const notification of notifications) {
-    await prisma.calendarNotification.create({
-      data: notification
-    })
-  }
+  await Promise.all(
+    notifications.map(notification => prisma.calendarNotification.create({ data: notification }))
+  )
 
   // Create venue catalogue entries
   const catalogueEntries = [
     {
-      venue_id: venues[0].id, // AB1 R5006
+      venue_id: createdVenues[0].id, // AB1 R5006
       image_url: 'https://example.com/venues/ab1_r5006_detail1.jpg',
       additional_details: 'Room equipped with 50 chairs, instructor desk, projector, whiteboard, and air conditioning.'
     },
     {
-      venue_id: venues[1].id, // AB1 R3002
+      venue_id: createdVenues[1].id, // AB1 R3002
       image_url: 'https://example.com/venues/ab1_r3002_detail1.jpg',
       additional_details: 'Lecture hall with 100 fixed seats, podium, dual projectors, and sound system.'
     },
     {
-      venue_id: venues[3].id, // AB3 R1001
+      venue_id: createdVenues[3].id, // AB3 R1001
       image_url: 'https://example.com/venues/ab3_r1001_detail1.jpg',
       additional_details: 'Auditorium with stage, professional lighting, sound system, and backstage rooms.'
     }
   ]
 
   console.log('Creating venue catalogue entries...')
-  for (const entry of catalogueEntries) {
-    await prisma.venueCatalogue.create({
-      data: entry
-    })
-  }
+  await Promise.all(
+    catalogueEntries.map(entry => prisma.venueCatalogue.create({ data: entry }))
+  )
 
   // Create audit logs
   const auditLogs = [
     {
       user_id: createdUsers[4].id, // cs_president
       entity_type: 'venue_booking',
-      entity_id: venueBookings[0].id,
+      entity_id: createdBookings[0].id,
       action: 'create',
       timestamp: new Date('2025-04-01T10:00:00Z')
     },
@@ -648,37 +540,33 @@ async function main() {
   ]
 
   console.log('Creating audit logs...')
-  for (const log of auditLogs) {
-    await prisma.auditLog.create({
-      data: log
-    })
-  }
+  await Promise.all(
+    auditLogs.map(log => prisma.auditLog.create({ data: log }))
+  )
 
   // Create event history
   const eventHistory = [
     {
-      venue_booking_id: venueBookings[0].id,
+      venue_booking_id: createdBookings[0].id,
       event_status: 'completed',
       feedback: 'Event successfully conducted with 45 attendees'
     },
     {
-      venue_booking_id: venueBookings[1].id,
+      venue_booking_id: createdBookings[1].id,
       event_status: 'pending',
       feedback: null
     },
     {
-      venue_booking_id: venueBookings[6].id,
+      venue_booking_id: createdBookings[2].id,
       event_status: 'cancelled',
       feedback: 'Event cancelled due to rejection'
     }
   ]
 
   console.log('Creating event history...')
-  for (const history of eventHistory) {
-    await prisma.eventHistory.create({
-      data: history
-    })
-  }
+  await Promise.all(
+    eventHistory.map(history => prisma.eventHistory.create({ data: history }))
+  )
 
   console.log('Seeding completed successfully!')
 }

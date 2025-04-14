@@ -8,17 +8,16 @@ import { NewProposalForm } from "./new-proposal-form"
 import { Plus } from "lucide-react"
 
 interface Proposal {
-  id: string
+  id: number
+  proposer_id: number
   title: string
   description: string
   event_type: string
   requested_date: string
-  end_date: string
-  status: "Pending" | "Approved" | "Rejected"
+  status: string
   created_at: string
-  comments?: string | null
   proposer: {
-    name: string
+    username: string
     email: string
   }
 }
@@ -47,7 +46,9 @@ export function ClubProposals() {
     fetchProposals()
   }, [])
 
-  const activeProposals = proposals.filter((proposal) => proposal.status === "Pending")
+  const activeProposals = proposals.filter((proposal) => 
+    proposal.status === "Under Review" || proposal.status === "Pending"
+  )
   const historyProposals = proposals.filter(
     (proposal) => proposal.status === "Approved" || proposal.status === "Rejected"
   )

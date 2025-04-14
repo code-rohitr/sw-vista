@@ -11,7 +11,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { Venue, VenueBooking, VenueCatalogue } from "@prisma/client"
+import { useState } from "react"
+import { BookingForm } from "./booking-form"
+import { useQuery } from "@tanstack/react-query"
 
 interface VenueCardProps {
   venue: Venue & {
@@ -22,88 +33,104 @@ interface VenueCardProps {
 }
 
 export function VenueCard({ venue }: VenueCardProps) {
-  const getBadgeVariant = (status: string) => {
-    switch (status) {
-      case "available":
-        return "success"
-      case "booked":
-        return "destructive"
-      case "maintenance":
-        return "warning"
-      default:
-        return "secondary"
-    }
-  }
+  const [isSheetOpen, setIsSheetOpen] = useState(false)
+
+  // Fetch all venues to pass to the booking form
+  const { data: venues } = useQuery({
+    queryKey: ["venues"],
+    queryFn: async () => {
+      const response = await fetch("/api/venues")
+      if (!response.ok) throw new Error("Failed to fetch venues")
+      return response.json()
+    },
+  })
 
   return (
-    <Card className="overflow-hidden">
-      <div className="aspect-video relative bg-gray-100">
-        {venue.image_url ? (
-          <img
-            src={venue.image_url}
-            alt={venue.name}
-            className="object-cover w-full h-full"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400">
-            No image available
-          </div>
-        )}
-      </div>
+    <Card>
       <CardHeader>
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle>{venue.name}</CardTitle>
-            <CardDescription>{venue.location}</CardDescription>
-          </div>
-          <Badge variant={getBadgeVariant(venue.status)}>
-            {venue.status.charAt(0).toUpperCase() + venue.status.slice(1)}
-          </Badge>
-        </div>
+        <CardTitle>{venue.name}</CardTitle>
+        <CardDescription>{venue.location}</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-gray-500"
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium">Status</h3>
+            <Badge
+              variant={
+                venue.status === "available"
+                  ? "default"
+                  : venue.status === "booked"
+                  ? "secondary"
+                  : "destructive"
+              }
             >
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            <span>Capacity: {venue.capacity}</span>
+              {venue.status === "available"
+                ? "Available"
+                : venue.status === "booked"
+                ? "Booked"
+                : "Under Maintenance"}
+            </Badge>
           </div>
-          {venue.description && (
-            <p className="text-sm text-gray-600">{venue.description}</p>
-          )}
-          {venue.nextBooking && (
-            <div className="mt-4">
-              <h4 className="text-sm font-medium text-gray-500">Next Booking</h4>
-              <p className="text-sm">
-                {format(new Date(venue.nextBooking.event_date), "PPP p")} -{" "}
-                {venue.nextBooking.event_name}
+          {venue.status === "booked" && venue.nextBooking && (
+            <div>
+              <h3 className="text-sm font-medium">Next Available</h3>
+              <p>
+                {format(new Date(venue.nextBooking.end_time), "PPP p")}
               </p>
+            </div>
+          )}
+          <div>
+            <h3 className="text-sm font-medium">Capacity</h3>
+            <p>{venue.capacity} people</p>
+          </div>
+          {venue.amenities && venue.amenities.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium">Amenities</h3>
+              <div className="flex flex-wrap gap-2">
+                {venue.amenities.map((amenity) => (
+                  <Badge key={amenity} variant="outline">
+                    {amenity}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {venue.catalogue && venue.catalogue.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium">Equipment</h3>
+              <div className="flex flex-wrap gap-2">
+                {venue.catalogue.map((item) => (
+                  <Badge key={item.id} variant="outline">
+                    {item.name} ({item.quantity})
+                  </Badge>
+                ))}
+              </div>
             </div>
           )}
         </div>
       </CardContent>
-      <CardFooter className="flex gap-2">
-        <Button className="flex-1" variant="outline">
-          View Details
-        </Button>
-        <Button className="flex-1" disabled={venue.status !== "available"}>
-          Book Now
-        </Button>
+      <CardFooter>
+        <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+          <SheetTrigger asChild>
+            <Button className="w-full" disabled={venue.status !== "available"}>
+              Book Now
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+            <SheetHeader>
+              <SheetTitle>Book {venue.name}</SheetTitle>
+              <SheetDescription>
+                Fill in the details to book this venue
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6">
+              <BookingForm 
+                venueId={venue.id} 
+                onSuccess={() => setIsSheetOpen(false)} 
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       </CardFooter>
     </Card>
   )

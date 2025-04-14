@@ -53,6 +53,9 @@ export default async function ClubDetailsPage({
   // Check if user has edit permissions
   const canEdit = session.user?.role === 'admin' || 
                  session.user?.role === 'SWO' || 
+                 session.user?.role === 'SC' ||
+                 session.user?.role === 'FA' ||
+                 session.user?.role === 'SECURITY' ||
                  (president?.user.email === session.user?.email)
 
   return (

@@ -10,12 +10,13 @@ import { useSession } from "next-auth/react"
 
 interface Proposal {
   id: number
+  proposer_id: number
   title: string
-  description: string | null
+  description: string
   event_type: string
-  requested_date: Date
+  requested_date: string
   status: string
-  created_at: Date
+  created_at: string
   comments?: string | null
   proposer: {
     username: string

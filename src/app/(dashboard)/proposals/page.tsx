@@ -11,12 +11,23 @@ export default async function ProposalsPage() {
     redirect('/login')
   }
 
-  // Allow both SWO, admin, and club to access this page
-  if (session.user?.role !== 'SWO' && session.user?.role !== 'admin' && session.user?.role !== 'club') {
+  // Allow SWO, admin, club, SC, FA, and SECURITY to access this page
+  if (session.user?.role !== 'SWO' && 
+      session.user?.role !== 'admin' && 
+      session.user?.role !== 'CLUB' && 
+      session.user?.role !== 'SC' && 
+      session.user?.role !== 'FA' && 
+      session.user?.role !== 'SECURITY') {
     redirect('/dashboard')
   }
 
-  const isAdmin = session.user?.role === 'SWO' || session.user?.role === 'admin'
+  // Show admin view for SWO, admin, SC, FA, and SECURITY
+  // Show club view for club role
+  const isAdmin = session.user?.role === 'SWO' || 
+                 session.user?.role === 'admin' || 
+                 session.user?.role === 'SC' || 
+                 session.user?.role === 'FA' || 
+                 session.user?.role === 'SECURITY'
 
   return isAdmin ? <AdminProposals /> : <ClubProposals />
 } 

@@ -34,7 +34,7 @@ export default async function LogsPage() {
   }
 
   // Allow both SWO and admin to access this page
-  if (session.user?.role !== 'SWO' && session.user?.role !== 'admin') {
+  if (session.user?.role !== 'SWO' && session.user?.role !== 'admin' && session.user?.role !== 'SC' && session.user?.role !== 'SECURITY') {
     redirect('/dashboard')
   }
 

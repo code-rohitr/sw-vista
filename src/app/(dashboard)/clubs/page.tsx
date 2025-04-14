@@ -37,8 +37,13 @@ export default async function ClubsPage() {
     redirect('/login')
   }
 
-  // Allow both SWO and admin to access this page
-  if (session.user?.role !== 'SWO' && session.user?.role !== 'admin') {
+  // Allow SWO, admin, club, SC, FA, and SECURITY to access this page
+  if (session.user?.role !== 'SWO' && 
+      session.user?.role !== 'admin' && 
+      session.user?.role !== 'CLUB' && 
+      session.user?.role !== 'SC' && 
+      session.user?.role !== 'FA' && 
+      session.user?.role !== 'SECURITY') {
     redirect('/dashboard')
   }
 

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import prisma from '@/lib/prisma'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,7 +13,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const bookingId = parseInt(params.id)
+    const { id } = context.params
+    
+    // Ensure id is available
+    if (!id) {
+      return NextResponse.json({ error: 'Booking ID is required' }, { status: 400 })
+    }
+
+    const bookingId = parseInt(id)
     const userId = parseInt(session.user.id)
     const userRole = session.user.role
 
@@ -21,15 +28,8 @@ export async function POST(
     const booking = await prisma.venueBooking.findUnique({
       where: { id: bookingId },
       include: {
-        approvals: {
-          include: {
-            approver: {
-              select: {
-                role: true
-              }
-            }
-          }
-        }
+        user: true,
+        venue: true
       }
     })
 
@@ -38,10 +38,16 @@ export async function POST(
     }
 
     // Check if user has already approved
-    const hasApproved = booking.approvals.some(
-      a => a.approver_id === userId && a.action === 'approved'
-    )
-    if (hasApproved) {
+    const existingApproval = await prisma.approval.findFirst({
+      where: {
+        approver_id: userId,
+        entity_type: 'booking',
+        entity_id: bookingId,
+        action: 'approved'
+      }
+    })
+
+    if (existingApproval) {
       return NextResponse.json(
         { error: 'Already approved this request' },
         { status: 400 }
@@ -50,19 +56,59 @@ export async function POST(
 
     // Determine the next status based on current approvals
     let newStatus = booking.status
-    const hasFA = booking.approvals.some(a => a.approver.role === 'FA' && a.action === 'approved')
-    const hasSC = booking.approvals.some(a => a.approver.role === 'SC' && a.action === 'approved')
-    const hasSWO = booking.approvals.some(a => a.approver.role === 'SWO' && a.action === 'approved')
-    const hasSecurity = booking.approvals.some(a => a.approver.role === 'SECURITY' && a.action === 'approved')
+    const faApproval = await prisma.approval.findFirst({
+      where: {
+        entity_type: 'booking',
+        entity_id: bookingId,
+        action: 'approved',
+        approver: {
+          role: 'FA'
+        }
+      }
+    })
+    
+    const scApproval = await prisma.approval.findFirst({
+      where: {
+        entity_type: 'booking',
+        entity_id: bookingId,
+        action: 'approved',
+        approver: {
+          role: 'SC'
+        }
+      }
+    })
+    
+    const swoApproval = await prisma.approval.findFirst({
+      where: {
+        entity_type: 'booking',
+        entity_id: bookingId,
+        action: 'approved',
+        approver: {
+          role: 'SWO'
+        }
+      }
+    })
+    
+    const securityApproval = await prisma.approval.findFirst({
+      where: {
+        entity_type: 'booking',
+        entity_id: bookingId,
+        action: 'approved',
+        approver: {
+          role: 'SECURITY'
+        }
+      }
+    })
 
-    if (userRole === 'FA' && !hasFA) {
-      newStatus = 'Pending SC Approval'
-    } else if (userRole === 'SC' && !hasSC) {
-      newStatus = 'Pending SWO Approval'
-    } else if (userRole === 'SWO' && !hasSWO) {
-      newStatus = 'Pending Security Approval'
-    } else if (userRole === 'SECURITY' && !hasSecurity) {
-      newStatus = 'Approved'
+    // Update status based on role and current approvals
+    if (userRole === 'FA' && !faApproval) {
+      newStatus = 2 // FA Approved
+    } else if (userRole === 'SC' && !scApproval) {
+      newStatus = 3 // SC Approved
+    } else if (userRole === 'SWO' && !swoApproval) {
+      newStatus = 4 // SWO Approved
+    } else if (userRole === 'SECURITY' && !securityApproval) {
+      newStatus = 5 // Security Approved (Final)
     }
 
     // Create approval record and update booking status
