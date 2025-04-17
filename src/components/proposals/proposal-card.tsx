@@ -28,7 +28,7 @@ interface ProposalCardProps {
   proposal: Proposal
 }
 
-export function ProposalCard({ proposal }: ProposalCardProps) {
+export function ProposalCard({ proposal, label }: ProposalCardProps) {
   const [comment, setComment] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
@@ -153,9 +153,10 @@ export function ProposalCard({ proposal }: ProposalCardProps) {
                   className="mt-2"
                 />
               </div>
-
-              <div className="flex gap-4">
+            {label == "history" && 
+              <div className="flex gap-4 ">
                 <Button
+                  className="border-2 hover:bg-gray-200"
                   onClick={handleApprove}
                   disabled={isSubmitting || !comment || proposal.status === "Approved"}
                   variant="default"
@@ -163,6 +164,7 @@ export function ProposalCard({ proposal }: ProposalCardProps) {
                   Approve
                 </Button>
                 <Button
+                  className="border-2 hover:bg-gray-200 text-black"
                   onClick={handleReject}
                   disabled={isSubmitting || !comment || proposal.status === "Rejected"}
                   variant="destructive"
@@ -170,6 +172,7 @@ export function ProposalCard({ proposal }: ProposalCardProps) {
                   Reject
                 </Button>
               </div>
+            }
             </>
           )}
         </div>

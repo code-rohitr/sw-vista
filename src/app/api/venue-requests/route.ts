@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
+import { VenueBooking, Proposal, Venue, User, ClubMember, Club } from '@prisma/client'
+
+type VenueBookingWithRelations = VenueBooking & {
+  user: User & {
+    club_memberships: (ClubMember & {
+      club: Club
+    })[]
+  }
+  venue: Venue
+  proposal: Proposal | null
+}
 
 // Helper function to check for overlapping bookings
 async function hasOverlappingBooking(venueId: number, startTime: Date, endTime: Date) {
@@ -87,19 +98,28 @@ export async function GET(request: Request) {
             }
           }
         },
-        venue: true
+        venue: true,
+        proposal: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            event_type: true,
+            status: true
+          }
+        }
       },
       orderBy: {
         created_at: 'desc'
       }
-    })
+    }) as VenueBookingWithRelations[]
 
     // Transform the data to match the frontend requirements
     const transformedBookings = bookings.map(booking => {
       // Get the club name from the user's club memberships
       // First try to find where user is President, if not found use the first club membership
       const clubMembership = booking.user.club_memberships.find(
-        membership => membership.role === 'President'
+        (membership: ClubMember & { club: Club }) => membership.role === 'President'
       ) || booking.user.club_memberships[0];
       
       const clubName = clubMembership?.club.name || booking.user.username;
@@ -111,9 +131,15 @@ export async function GET(request: Request) {
         venue: `${booking.venue.location}, ${booking.venue.name}`,
         startDate: booking.start_time,
         endDate: booking.end_time,
-        applicationType: 'Technical', // This should come from somewhere
+        applicationType: booking.proposal?.event_type || 'Technical',
         applicationDate: booking.created_at.toLocaleDateString(),
-        status: booking.status
+        status: booking.status,
+        proposal: booking.proposal ? {
+          id: booking.proposal.id,
+          title: booking.proposal.title,
+          description: booking.proposal.description,
+          status: booking.proposal.status
+        } : null
       }
     })
 
@@ -135,7 +161,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { event_name, event_date, start_time, end_time, event_type, description, venue_id } = body
+    const { event_name, event_date, start_time, end_time, event_type, description, venue_id, proposal_id } = body
 
     // Convert dates to Date objects
     const startTime = new Date(start_time)
@@ -153,6 +179,54 @@ export async function POST(request: Request) {
       )
     }
 
+    let proposalToConnect = null;
+
+    // If this is an event booking (event_type === 'seminar'), validate proposal
+    if (event_type === 'seminar') {
+      if (!proposal_id) {
+        return NextResponse.json(
+          { error: 'Proposal ID is required for event bookings' },
+          { status: 400 }
+        )
+      }
+
+      // Check if proposal exists and is approved
+      const proposal = await prisma.proposal.findUnique({
+        where: { id: proposal_id }
+      })
+
+      if (!proposal) {
+        return NextResponse.json(
+          { error: 'Proposal not found' },
+          { status: 404 }
+        )
+      }
+
+      if (proposal.status !== 'Approved') {
+        return NextResponse.json(
+          { error: 'Only approved proposals can be used for booking' },
+          { status: 400 }
+        )
+      }
+
+      // Check if proposal is already used in another booking
+      const existingBooking = await prisma.venueBooking.findFirst({
+        where: {
+          proposal_id: proposal_id,
+          status: { not: 0 }
+        }
+      })
+
+      if (existingBooking) {
+        return NextResponse.json(
+          { error: 'This proposal has already been used for another booking' },
+          { status: 400 }
+        )
+      }
+
+      proposalToConnect = { connect: { id: proposal_id } };
+    }
+
     // Create the venue booking
     const booking = await prisma.venueBooking.create({
       data: {
@@ -166,7 +240,8 @@ export async function POST(request: Request) {
         },
         venue: {
           connect: { id: venue_id }
-        }
+        },
+        ...(proposalToConnect && { proposal: proposalToConnect })
       }
     })
 

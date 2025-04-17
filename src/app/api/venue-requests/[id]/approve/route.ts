@@ -29,7 +29,8 @@ export async function POST(
       where: { id: bookingId },
       include: {
         user: true,
-        venue: true
+        venue: true,
+        proposal: true
       }
     })
 
@@ -125,7 +126,17 @@ export async function POST(
       prisma.venueBooking.update({
         where: { id: bookingId },
         data: { status: newStatus }
-      })
+      }),
+      // If this is the final approval (Security) and there's an associated proposal,
+      // mark the proposal as completed
+      ...(newStatus === 5 && booking.proposal_id
+        ? [
+            prisma.proposal.update({
+              where: { id: booking.proposal_id },
+              data: { status: 'Completed' }
+            })
+          ]
+        : [])
     ])
 
     return NextResponse.json({ status: 'success', newStatus })

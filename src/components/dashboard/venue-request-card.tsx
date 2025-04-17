@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils"
 import { Check, X, Clock } from "lucide-react"
 import React, { useState } from "react"
 import { BookingDetails } from "./booking-details"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Separator } from "@/components/ui/separator"
 import { useSession } from "next-auth/react"
 
 interface VenueRequestCardProps {
@@ -23,6 +25,25 @@ interface VenueRequestCardProps {
     applicationDate?: string
     status: number
     studentCouncilPresident?: string
+    proposal?: {
+      id: number
+      title: string
+      description: string
+      status: string
+    } | null
+    reports?: Array<{
+      id: number
+      report_type: string
+      content: string
+      status: string
+      created_at: string | Date
+    }>
+    eventHistory?: Array<{
+      id: number
+      event_status: string
+      feedback: string | null
+      created_at: string | Date
+    }>
   }
   onApprove: (id: string) => void
   onReject: (id: string) => void
@@ -34,8 +55,7 @@ export function VenueRequestCard({
   onReject,
 }: VenueRequestCardProps) {
   const [showDetails, setShowDetails] = useState(false)
-  const [bookingDetails, setBookingDetails] = useState(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [showProposal, setShowProposal] = useState(false)
   const { data: session } = useSession()
 
   // Helper function to determine if the current user can approve/reject
@@ -81,21 +101,6 @@ export function VenueRequestCard({
 
     return steps;
   };
-
-  const handleDetailsClick = async () => {
-    try {
-      setIsLoading(true)
-      const response = await fetch(`/api/venue-requests/${request.id}`)
-      if (!response.ok) throw new Error('Failed to fetch booking details')
-      const data = await response.json()
-      setBookingDetails(data)
-      setShowDetails(true)
-    } catch (error) {
-      console.error('Error fetching booking details:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const statusSteps = getStatusDisplay(request.status);
 
@@ -169,6 +174,15 @@ export function VenueRequestCard({
               {request.applicationType && (
                 <Badge variant="secondary">{request.applicationType}</Badge>
               )}
+              {request.proposal && (
+                <Badge 
+                  variant="outline" 
+                  className="cursor-pointer hover:bg-secondary"
+                  onClick={() => setShowProposal(true)}
+                >
+                  View Proposal
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {canShowActions() && (
@@ -192,10 +206,9 @@ export function VenueRequestCard({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleDetailsClick}
-                disabled={isLoading}
+                onClick={() => setShowDetails(true)}
               >
-                {isLoading ? "Loading..." : "Details"}
+                Details
               </Button>
             </div>
           </div>
@@ -203,10 +216,51 @@ export function VenueRequestCard({
       </Card>
 
       <BookingDetails
-        booking={bookingDetails}
+        booking={{
+          id: request.id,
+          clubName: request.name,
+          event: request.event,
+          venue: request.venue,
+          startDate: request.startDate,
+          endDate: request.endDate,
+          applicationType: request.applicationType || '',
+          applicationDate: request.applicationDate || '',
+          status: request.status,
+          proposal: request.proposal,
+          reports: request.reports,
+          eventHistory: request.eventHistory
+        }}
         open={showDetails}
         onClose={() => setShowDetails(false)}
       />
+
+      {request.proposal && (
+        <Sheet open={showProposal} onOpenChange={setShowProposal}>
+          <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+            <SheetHeader>
+              <SheetTitle>Proposal Details</SheetTitle>
+            </SheetHeader>
+            <div className="space-y-6 pt-8">
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Title</h3>
+                <p className="text-base font-medium">{request.proposal.title}</p>
+              </div>
+              <Separator />
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Description</h3>
+                <p className="text-base whitespace-pre-wrap">{request.proposal.description}</p>
+              </div>
+              <Separator />
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Status</h3>
+                <Badge variant={request.proposal.status === 'Approved' ? 'secondary' : 'outline'}>
+                  {request.proposal.status}
+                </Badge>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
     </>
   )
 } 

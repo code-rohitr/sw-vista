@@ -64,6 +64,8 @@ model VenueBooking {
   user_id     Int
   venue       Venue    @relation(fields: [venue_id], references: [id])
   venue_id    Int
+  proposal    Proposal? @relation(fields: [proposal_id], references: [id])
+  proposal_id Int?
 
   // Relations
   reports Report[]
@@ -98,6 +100,7 @@ model Proposal {
   
   // Relations
   proposer       User     @relation("ProposerToProposal", fields: [proposer_id], references: [id])
+  venue_bookings VenueBooking[]
 
   @@map("proposals")
 }

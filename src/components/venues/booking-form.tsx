@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -43,7 +43,33 @@ const bookingFormSchema = z.object({
   }),
   event_type: z.string().min(1, "Event type is required"),
   description: z.string().min(1, "Description is required"),
-})
+  proposal_id: z.string().optional(),
+}).refine((data) => {
+  // Only require proposal_id if event_type is 'seminar'
+  if (data.event_type === 'seminar') {
+    return !!data.proposal_id;
+  }
+  return true;
+}, {
+  message: "Proposal is required for events",
+  path: ["proposal_id"],
+}).refine((data) => {
+  // Check if end time is after start time
+  return data.end_time > data.start_time;
+}, {
+  message: "End time must be after start time",
+  path: ["end_time"],
+}).refine((data) => {
+  // Check if event date is not in the past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const eventDate = new Date(data.event_date);
+  eventDate.setHours(0, 0, 0, 0);
+  return eventDate >= today;
+}, {
+  message: "Event date cannot be in the past",
+  path: ["event_date"],
+});
 
 type BookingFormValues = z.infer<typeof bookingFormSchema>
 
@@ -52,10 +78,35 @@ interface BookingFormProps {
   onSuccess?: () => void
 }
 
+interface Proposal {
+  id: number
+  title: string
+  status: string
+}
+
 export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [proposals, setProposals] = useState<Proposal[]>([])
+
+  useEffect(() => {
+    // Fetch approved proposals for the club
+    const fetchProposals = async () => {
+      try {
+        const response = await fetch("/api/proposals/club")
+        if (response.ok) {
+          const data = await response.json()
+          // Filter only approved proposals
+          setProposals(data.filter((p: Proposal) => p.status === "Approved"))
+        }
+      } catch (error) {
+        console.error("Error fetching proposals:", error)
+      }
+    }
+
+    fetchProposals()
+  }, [])
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
@@ -66,8 +117,12 @@ export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
       end_time: undefined,
       event_type: "",
       description: "",
+      proposal_id: undefined,
     },
   })
+
+  const watchEventType = form.watch("event_type")
+  const isEventType = watchEventType === "seminar"
 
   async function onSubmit(data: BookingFormValues) {
     setIsSubmitting(true)
@@ -81,27 +136,37 @@ export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
         body: JSON.stringify({
           ...data,
           venue_id: venueId,
+          proposal_id: data.event_type === 'seminar' ? parseInt(data.proposal_id!) : undefined,
         }),
       })
 
+      const responseData = await response.json()
+
       if (!response.ok) {
-        const errorData = await response.json()
-        if (errorData.error === "Event timing collides with existing booking") {
+        if (responseData.error === "Event timing collides with existing booking") {
           setError(
-            `An event with the name "${errorData.existingBooking.event_name}" has booked this venue from ${format(new Date(errorData.existingBooking.start_time), "h:mm a")} to ${format(new Date(errorData.existingBooking.end_time), "h:mm a")}`
+            `An event "${responseData.existingBooking.event_name}" has already booked this venue from ${format(new Date(responseData.existingBooking.start_time), "h:mm a")} to ${format(new Date(responseData.existingBooking.end_time), "h:mm a")}`
           )
+        } else if (responseData.error === "Proposal not found") {
+          setError("The selected proposal was not found. Please select another proposal.")
+        } else if (responseData.error === "Only approved proposals can be used for booking") {
+          setError("This proposal has not been approved yet. Please select an approved proposal.")
+        } else if (responseData.error === "This proposal has already been used for another booking") {
+          setError("This proposal has already been used for another venue booking. Please select a different proposal.")
+        } else if (responseData.error === "Proposal ID is required for event bookings") {
+          setError("Please select a proposal for your event booking.")
         } else {
-          throw new Error(errorData.error || "Failed to create booking")
+          setError(responseData.error || "Failed to create booking. Please try again.")
         }
         return
       }
 
-      toast("Booking request submitted successfully")
+      toast.success("Booking request submitted successfully")
       form.reset()
       onSuccess?.()
       router.refresh()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create booking")
+      setError("An unexpected error occurred. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -112,7 +177,8 @@ export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         {error && (
           <div className="rounded-md bg-destructive/15 p-4 text-sm text-destructive">
-            {error}
+            <div className="font-medium">Error</div>
+            <div className="mt-1">{error}</div>
           </div>
         )}
 
@@ -236,13 +302,13 @@ export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Event Type</FormLabel>
-              <Select  onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select event type" />
                   </SelectTrigger>
                 </FormControl>
-                <SelectContent>
+                <SelectContent className="border-2  bg-white">
                   <SelectItem value="meeting">GBM</SelectItem>
                   <SelectItem value="workshop">Practice</SelectItem>
                   <SelectItem value="seminar">Event</SelectItem>
@@ -252,6 +318,33 @@ export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
             </FormItem>
           )}
         />
+
+        {isEventType && (
+          <FormField
+            control={form.control}
+            name="proposal_id"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Select Approved Proposal</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a proposal" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {proposals.map((proposal) => (
+                      <SelectItem key={proposal.id} value={proposal.id.toString()}>
+                        {proposal.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}
@@ -271,7 +364,7 @@ export function BookingForm({ venueId, onSuccess }: BookingFormProps) {
           )}
         />
 
-        <Button type="submit" disabled={isSubmitting}>
+        <Button className="border-2 hover:bg-gray-200" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Submitting..." : "Submit Booking Request"}
         </Button>
       </form>

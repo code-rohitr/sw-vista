@@ -70,7 +70,7 @@ export function AdminProposals() {
               <p className="text-gray-500 text-center">No active proposals found</p>
             ) : (
               activeProposals.map((proposal) => (
-                <ProposalCard key={proposal.id} proposal={proposal} />
+                <ProposalCard label="history" key={proposal.id} proposal={proposal} />
               ))
             )}
           </div>

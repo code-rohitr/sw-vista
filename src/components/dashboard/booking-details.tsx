@@ -15,6 +15,12 @@ interface BookingDetailsProps {
     applicationType: string
     applicationDate: string
     status: number
+    proposal?: {
+      id: number
+      title: string
+      description: string
+      status: string
+    } | null
     reports?: Array<{
       id: number
       report_type: string
@@ -98,6 +104,19 @@ export function BookingDetails({ booking, open, onClose }: BookingDetailsProps) 
             <h3 className="text-sm font-medium text-muted-foreground">Application Type</h3>
             <p className="text-base">{booking.applicationType}</p>
           </div>
+          {booking.proposal && (
+            <>
+              <Separator />
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Proposal Details</h3>
+                <div className="space-y-2">
+                  <p className="text-base font-medium">{booking.proposal.title}</p>
+                  <p className="text-sm text-muted-foreground">{booking.proposal.description}</p>
+                  <p className="text-sm">Status: {booking.proposal.status}</p>
+                </div>
+              </div>
+            </>
+          )}
           <Separator />
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Application Date</h3>
