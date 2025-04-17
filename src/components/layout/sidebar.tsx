@@ -200,7 +200,8 @@ export function Sidebar() {
 
   const getNavItems = () => {
     if (session.user?.role === 'SWO' || session.user?.role === 'admin' || session.user?.role === 'SC' || session.user?.role === 'FA' || session.user?.role === 'SECURITY') {
-      return adminNavItems
+      const navItems = adminNavItems.filter(item => item.title !== "Proposal Requests" && item.title !== "Activity Logs" && item.title !== "Venues")
+      return session.user?.role === 'SWO' ? adminNavItems : navItems
     }
     if (session.user?.role === 'CLUB') {
       return clubNavItems

@@ -26,6 +26,7 @@ interface Proposal {
 
 interface ProposalCardProps {
   proposal: Proposal
+  label?: string
 }
 
 export function ProposalCard({ proposal, label }: ProposalCardProps) {
@@ -35,6 +36,7 @@ export function ProposalCard({ proposal, label }: ProposalCardProps) {
   const { data: session } = useSession()
 
   const isAdmin = session?.user?.role === 'SWO' || session?.user?.role === 'admin'
+  const showActions = isAdmin && label !== "history"
 
   const handleApprove = async () => {
     try {
@@ -153,26 +155,26 @@ export function ProposalCard({ proposal, label }: ProposalCardProps) {
                   className="mt-2"
                 />
               </div>
-            {label == "history" && 
-              <div className="flex gap-4 ">
-                <Button
-                  className="border-2 hover:bg-gray-200"
-                  onClick={handleApprove}
-                  disabled={isSubmitting || !comment || proposal.status === "Approved"}
-                  variant="default"
-                >
-                  Approve
-                </Button>
-                <Button
-                  className="border-2 hover:bg-gray-200 text-black"
-                  onClick={handleReject}
-                  disabled={isSubmitting || !comment || proposal.status === "Rejected"}
-                  variant="destructive"
-                >
-                  Reject
-                </Button>
-              </div>
-            }
+              {(
+                <div className="flex gap-4 mt-4">
+                  <Button
+                    className="border-2 hover:bg-gray-200"
+                    onClick={handleApprove}
+                    disabled={ isSubmitting || proposal.status === "Approved"}
+                    variant="default"
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    className="border-2 hover:bg-gray-200 text-black"
+                    onClick={handleReject}
+                    disabled={isSubmitting || proposal.status === "Rejected"}
+                    variant="destructive"
+                  >
+                    Reject
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </div>
